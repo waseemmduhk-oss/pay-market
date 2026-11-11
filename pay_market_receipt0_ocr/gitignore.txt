@@ -1,0 +1,9 @@
+hotspot_cards.db
+hotspot_cards.db-wal
+hotspot_cards.db-shm
+secret.key
+cleanup_token.key
+backups/
+receipts/
+__pycache__/
+*.pyc

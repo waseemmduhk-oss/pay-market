@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة المطوّر — المشغّلون</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+        body { font-family:'Cairo',sans-serif; background:#0B1329; color:#e2e8f0; }
+        .card { background:#151F38; border:1px solid #253254; border-radius:1rem; }
+        .modal-backdrop { background:rgba(11,19,41,.8); backdrop-filter:blur(4px); }
+    </style>
+</head>
+<body class="min-h-screen">
+
+{% if using_default_password %}
+<div id="defaultPwWarning" class="fixed top-5 left-1/2 -translate-x-1/2 z-[998] w-full max-w-md px-4">
+    <div class="card border-amber-800 shadow-2xl p-4 flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-950/40 text-amber-400 flex items-center justify-center shrink-0 text-lg">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div class="flex-1">
+            <p class="text-sm font-bold text-white">تنبيه أمني</p>
+            <p class="text-xs text-slate-400 mt-0.5">
+                لسه على كلمة مرور الدخول الافتراضية.
+                غيّرها من ⚙️ الإعدادات فوراً.
+            </p>
+        </div>
+        <button onclick="dismissDefaultPwWarning()" class="text-slate-500 hover:text-slate-300 text-lg leading-none shrink-0">×</button>
+    </div>
+</div>
+<script>
+// نُخفي التنبيه فوراً لو تم إغلاقه سابقاً بنفس جلسة المتصفح (sessionStorage) —
+// يظهر من جديد بجلسة دخول جديدة طالما كلمة المرور لسه افتراضية، بدل ما يبقى
+// مثبّتاً على الشاشة بلا طريقة لإخفائه.
+if (sessionStorage.getItem('defaultPwWarningDismissed') === '1') {
+    document.getElementById('defaultPwWarning').style.display = 'none';
+}
+function dismissDefaultPwWarning() {
+    sessionStorage.setItem('defaultPwWarningDismissed', '1');
+    document.getElementById('defaultPwWarning').style.display = 'none';
+}
+</script>
+{% endif %}
+
+{% if op_message %}
+<div id="opToast" class="fixed top-5 left-1/2 -translate-x-1/2 z-[999] w-full max-w-sm px-4">
+    <div class="card border-{{ 'emerald-800' if op_message[0]=='success' else 'red-800' }} shadow-2xl p-4 flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl {{ 'bg-emerald-950/40 text-emerald-400' if op_message[0]=='success' else 'bg-red-950/40 text-red-400' }} flex items-center justify-center shrink-0 text-lg">
+            <i class="fa-solid {{ 'fa-circle-check' if op_message[0]=='success' else 'fa-triangle-exclamation' }}"></i>
+        </div>
+        <div class="flex-1">
+            <p class="text-sm font-bold text-white">{{ 'تم بنجاح' if op_message[0]=='success' else 'حدث خطأ' }}</p>
+            <p class="text-xs text-slate-400 mt-0.5">{{ op_message[1] }}</p>
+        </div>
+        <button onclick="document.getElementById('opToast').remove()" class="text-slate-500 hover:text-slate-300 text-lg leading-none">×</button>
+    </div>
+</div>
+<script>setTimeout(()=>document.getElementById('opToast')?.remove(),6000);</script>
+{% endif %}
+
+<div class="max-w-6xl mx-auto p-4 sm:p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-[#253254]">
+        <div>
+            <h1 class="text-xl font-extrabold text-white flex items-center gap-2"><i class="fa-solid fa-code text-indigo-400"></i> لوحة المطوّر</h1>
+            <p class="text-[11px] text-slate-500 font-bold mt-1">الجلسة تنتهي بعد: <span id="devSessionTimer" class="text-amber-400">{{ session_minutes }}:{{ "%02d"|format(session_seconds) }}</span></p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap justify-end">
+            <a href="/dev/system-health" class="bg-[#1C2541] hover:bg-[#253254] text-emerald-400 px-4 py-2 rounded-lg text-xs font-bold border border-[#253254]"><i class="fa-solid fa-heart-pulse"></i> صحة النظام</a>
+            <a href="/dev/security" class="bg-[#1C2541] hover:bg-[#253254] text-red-400 px-4 py-2 rounded-lg text-xs font-bold border border-[#253254]"><i class="fa-solid fa-shield-halved"></i> سجل الأمان</a>
+            <a href="/dev/audit-log" class="bg-[#1C2541] hover:bg-[#253254] text-slate-300 px-4 py-2 rounded-lg text-xs font-bold border border-[#253254]"><i class="fa-solid fa-list-check"></i> سجل النشاط</a>
+            <button onclick="openModal('monthlyReportModal')" class="bg-teal-700 hover:bg-teal-600 text-white px-4 py-2 rounded-lg text-xs font-bold"><i class="fa-solid fa-file-excel"></i> تقرير شهري</button>
+            <a href="/dev/backups" class="bg-[#1C2541] hover:bg-[#253254] text-slate-300 px-4 py-2 rounded-lg text-xs font-bold border border-[#253254]"><i class="fa-solid fa-database"></i> النسخ الاحتياطي</a>
+            <button onclick="openModal('settingsModal')" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-xs font-bold"><i class="fa-solid fa-gear"></i></button>
+            <button type="button" onclick="openModal('logoutModal')" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg text-xs font-bold">تسجيل الخروج</button>
+        </div>
+    </div>
+
+    {# ── إحصائيات عامة ── #}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <div class="card p-4"><p class="text-[11px] text-slate-500 font-bold mb-1">عدد المشغّلين</p><p class="text-2xl font-extrabold text-white">{{ operators|length }}</p></div>
+        <div class="card p-4"><p class="text-[11px] text-slate-500 font-bold mb-1">إجمالي البطاقات</p><p class="text-2xl font-extrabold text-indigo-400">{{ global_total }}</p></div>
+        <div class="card p-4"><p class="text-[11px] text-slate-500 font-bold mb-1">إجمالي الإيرادات <i class="fa-solid fa-lock text-[9px] text-emerald-600" title="محفوظ ولا يتأثر بحذف أو تصفير البطاقات"></i></p><p class="text-2xl font-extrabold text-emerald-400">{{ "%.0f"|format(global_revenue) }}₪</p></div>
+        <div class="card p-4 flex items-center justify-center">
+            <button onclick="openModal('newOpModal')" class="w-full h-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-2 py-2">
+                <i class="fa-solid fa-plus"></i> إضافة مشغّل جديد
+            </button>
+        </div>
+    </div>
+
+    {# ── تنظيف دوري تلقائي: مسار وسرّ على مستوى الموقع كامل (كل المشغّلين) —
+         عرضه هنا فقط (لوحة المطوّر/مالك الموقع) وليس بلوحة أي مشغّل، لأنه
+         يمنح صلاحية عابرة لكل المشغّلين مش خاصة بمشغّل واحد. ── #}
+    <div class="mb-6 flex flex-wrap gap-2">
+        <button onclick="openModal('cleanupModal')" class="card px-4 py-2.5 rounded-xl text-xs font-bold text-slate-200 flex items-center gap-2 hover:border-indigo-500/50 transition-colors">
+            <i class="fa-solid fa-broom text-indigo-400"></i> تنظيف دوري تلقائي (لكل المشغّلين)
+        </button>
+        <button onclick="openModal('resetRevenueModal')" class="card px-4 py-2.5 rounded-xl text-xs font-bold text-rose-400 flex items-center gap-2 hover:border-rose-500/50 transition-colors">
+            <i class="fa-solid fa-eraser"></i> مسح الإيرادات
+        </button>
+    </div>
+    <div id="cleanupModal" class="hidden fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+        <div class="card rounded-2xl p-6 max-w-md w-full">
+            <div class="flex items-center justify-between mb-3">
+                <p class="text-sm font-bold text-white"><i class="fa-solid fa-broom text-indigo-400"></i> تنظيف دوري تلقائي (اختياري لكن يُنصح به)</p>
+                <button onclick="document.getElementById('cleanupModal').classList.add('hidden')" class="text-slate-500 hover:text-slate-300"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="text-[11px] text-slate-400 mb-3">
+                بدون هذا، تحرير حجوزات الطلبات المنتهية يحصل فقط لما حدا يزور متجر أحد المشغّلين. لتفعيل تنظيف كل 5 دقائق حتى بدون زوار،
+                من تبويب <strong>Tasks</strong> بحساب PythonAnywhere أضف مهمة مجدولة تنفّذ الرابط التالي (يشمل كل المشغّلين بضغطة واحدة).
+                <strong class="text-amber-400">هذا رابط حسّاس على مستوى الموقع كامل — لا تشاركه مع أي مشغّل/شبكة.</strong>
+            </p>
+            <div class="flex items-center gap-2 bg-[#0B1329] rounded-xl p-3">
+                <code class="text-[11px] font-mono flex-1 overflow-x-auto whitespace-nowrap text-slate-300" dir="ltr">{{ cleanup_url }}</code>
+                <button onclick="navigator.clipboard.writeText('{{ cleanup_url }}')" class="text-indigo-400 text-xs font-bold shrink-0"><i class="fa-regular fa-copy"></i> نسخ</button>
+            </div>
+        </div>
+    </div>
+
+    {# ── مسح الإيرادات: لشبكة معيّنة أو لكل الشبكات دفعة وحدة ── #}
+    <div id="resetRevenueModal" class="hidden fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+        <div class="card rounded-2xl p-6 max-w-md w-full">
+            <div class="flex items-center justify-between mb-3">
+                <p class="text-sm font-bold text-white"><i class="fa-solid fa-eraser text-rose-400"></i> مسح الإيرادات</p>
+                <button onclick="closeModal('resetRevenueModal')" class="text-slate-500 hover:text-slate-300"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="text-[11px] text-amber-400 mb-4">
+                <i class="fa-solid fa-triangle-exclamation"></i> هذا يصفّر إجمالي الإيراد التراكمي وسجل الرسم البياني اليومي — الإجراء نهائي ولا يمكن التراجع عنه. البطاقات والمبيعات نفسها لا تتأثر، فقط أرقام الإيراد.
+            </p>
+
+            <div class="border-b border-[#3A506B]/40 mb-4">
+                <div class="flex gap-4 text-xs font-bold">
+                    <button type="button" onclick="switchRevenueTab('single')" id="tabBtn_single" class="pb-2 border-b-2 border-indigo-400 text-white">لشبكة معيّنة</button>
+                    <button type="button" onclick="switchRevenueTab('all')" id="tabBtn_all" class="pb-2 border-b-2 border-transparent text-slate-500">لكل الشبكات</button>
+                </div>
+            </div>
+
+            <form method="POST" action="/dev/operators/reset-revenue" id="revenueTab_single">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="scope" value="single">
+                <label class="block text-[11px] font-bold text-slate-400 mb-1.5">اختر الشبكة</label>
+                <select name="op_id" required class="w-full bg-[#0B1329] border border-[#3A506B]/50 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-300 mb-4">
+                    {% for op in operators %}
+                    <option value="{{ op.id }}">{{ op.name }} ({{ "%.1f"|format(op.lifetime_revenue) }}₪)</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="w-full bg-rose-600 hover:bg-rose-700 text-white py-2.5 rounded-xl text-xs font-bold">مسح إيراد هذه الشبكة</button>
+            </form>
+
+            <form method="POST" action="/dev/operators/reset-revenue" id="revenueTab_all" class="hidden">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="scope" value="all">
+                <label class="block text-[11px] font-bold text-slate-400 mb-1.5">
+                    اكتب <strong class="text-rose-400" dir="ltr">مسح الكل</strong> للتأكيد (سيتصفّر إيراد كل الشبكات دفعة وحدة)
+                </label>
+                <input type="text" name="confirm_all" required placeholder="مسح الكل"
+                    class="w-full bg-[#0B1329] border border-[#3A506B]/50 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-300 mb-4">
+                <button type="submit" class="w-full bg-rose-600 hover:bg-rose-700 text-white py-2.5 rounded-xl text-xs font-bold">مسح إيراد كل الشبكات</button>
+            </form>
+        </div>
+    </div>
+
+    {# ── رسم بياني مبسّط للإيرادات (قابل للتصفية حسب المشغّل والمدى) ── #}
+    <div class="card p-5 mb-6">
+        <form method="GET" class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h3 class="text-sm font-bold text-white"><i class="fa-solid fa-chart-column text-indigo-400"></i> الإيراد اليومي{{ ' — ' ~ chart_operator_name if chart_operator_name else ' الإجمالي' }}</h3>
+            <div class="flex gap-2">
+                <select name="chart_operator" onchange="this.form.submit()" class="px-2 py-1.5 bg-[#0B1329] border border-[#253254] rounded-lg text-[11px] font-bold text-white">
+                    <option value="">كل المشغّلين</option>
+                    {% for op in operators %}
+                    <option value="{{ op.id }}" {{ 'selected' if op.id == chart_operator_id else '' }}>{{ op.name }}</option>
+                    {% endfor %}
+                </select>
+                <select name="chart_days" onchange="this.form.submit()" class="px-2 py-1.5 bg-[#0B1329] border border-[#253254] rounded-lg text-[11px] font-bold text-white">
+                    <option value="7"  {{ 'selected' if chart_days == 7  else '' }}>آخر 7 أيام</option>
+                    <option value="30" {{ 'selected' if chart_days == 30 else '' }}>آخر 30 يوم</option>
+                    <option value="90" {{ 'selected' if chart_days == 90 else '' }}>آخر 90 يوم</option>
+                </select>
+            </div>
+        </form>
+
+        {% if revenue_series %}
+        <div class="flex items-center gap-4 mb-3 text-[11px]">
+            <span class="text-slate-500">إجمالي الفترة: <b class="text-emerald-400">{{ revenue_period_total }}₪</b></span>
+            <span class="text-slate-500">المتوسط اليومي: <b class="text-slate-300">{{ revenue_period_avg }}₪</b></span>
+        </div>
+        <div class="flex items-end gap-[3px] h-32 overflow-x-auto pb-1">
+            {% for p in revenue_series %}
+            <div class="flex-1 min-w-[6px] flex flex-col items-end justify-end" style="height:100%;">
+                <div class="w-full bg-indigo-500 hover:bg-indigo-400 rounded-t transition-all" style="height:{{ ((p.revenue / revenue_series_max) * 100)|round(1) }}%; min-height:2px;" title="{{ p.date }}: {{ p.revenue }}₪"></div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="flex justify-between text-[10px] text-slate-500 mt-2 font-bold">
+            {% set tick_step = (revenue_series|length / 6)|round(0, 'ceil')|int %}
+            {% for p in revenue_series %}
+                {% if loop.index0 % tick_step == 0 or loop.last %}
+                <span>{{ p.date }}</span>
+                {% endif %}
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-xs text-slate-500 text-center py-6">لا توجد بيانات مبيعات بعد.</p>
+        {% endif %}
+    </div>
+
+    {# ── قائمة المشغّلين ── #}
+    <div class="space-y-3">
+        {% for op in operators %}
+        {% set s = stats[op.id] %}
+        <div class="card p-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 rounded-xl {{ 'bg-indigo-950/50 text-indigo-400' if op.is_active else 'bg-slate-800 text-slate-500' }} flex items-center justify-center text-lg">
+                        <i class="fa-solid fa-tower-broadcast"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h3 class="font-extrabold text-white text-sm">{{ op.name }}</h3>
+                            {% if op.is_active %}
+                            <span class="bg-emerald-950/50 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full">مفعّل</span>
+                            {% else %}
+                            <span class="bg-slate-800 text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded-full">معطّل</span>
+                            {% endif %}
+                            {% if s.low_stock_count > 0 %}
+                            <span class="bg-amber-950/50 text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded-full"><i class="fa-solid fa-triangle-exclamation"></i> مخزون منخفض ({{ s.low_stock_count }})</span>
+                            {% endif %}
+                        </div>
+                        <p class="text-[11px] text-slate-500 font-mono">/shop/{{ op.slug }}/ &nbsp;|&nbsp; أدمن: /{{ op.slug }}/admin/</p>
+                        <p class="text-[11px] text-slate-500">اسم مستخدم الأدمن: <span class="font-mono text-slate-300">{{ s.admin_username or '—' }}</span></p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 text-xs">
+                    <div class="text-center"><p class="text-slate-500 text-[10px]">متاح</p><p class="font-bold text-emerald-400">{{ s.available }}</p></div>
+                    <div class="text-center"><p class="text-slate-500 text-[10px]">مباع</p><p class="font-bold text-slate-300">{{ s.sold }}</p></div>
+                    <div class="text-center"><p class="text-slate-500 text-[10px]">إيراد <i class="fa-solid fa-lock text-[8px]"></i></p><p class="font-bold text-indigo-400">{{ "%.0f"|format(s.revenue) }}₪</p></div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <a href="/shop/{{ op.slug }}/" target="_blank" class="bg-[#1C2541] hover:bg-[#253254] text-slate-300 px-3 py-1.5 rounded-lg text-[11px] font-bold border border-[#253254]"><i class="fa-solid fa-arrow-up-right-from-square"></i> المتجر</a>
+                    <a href="/{{ op.slug }}/admin/dashboard" target="_blank" class="bg-[#1C2541] hover:bg-[#253254] text-slate-300 px-3 py-1.5 rounded-lg text-[11px] font-bold border border-[#253254]"><i class="fa-solid fa-gauge"></i> لوحته</a>
+                    <button onclick="openResetModal({{ op.id }}, '{{ op.name }}', '{{ s.admin_username or '' }}')" class="bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 px-3 py-1.5 rounded-lg text-[11px] font-bold"><i class="fa-solid fa-key"></i></button>
+                    <button type="button"
+                        data-id="{{ op.id }}" data-name="{{ op.name }}" data-slug="{{ op.slug }}"
+                        data-hotspot-title="{{ op.hotspot_title or '' }}"
+                        data-hotspot-url="{{ op.hotspot_login_url or 'http://00.00.00.00/login' }}"
+                        data-support="{{ op.support_phone or '' }}" data-jawwal="{{ op.jawwal_pay_number or '' }}"
+                        onclick="openEditModal(this)"
+                        class="bg-indigo-900/30 hover:bg-indigo-900/50 text-indigo-400 px-3 py-1.5 rounded-lg text-[11px] font-bold"><i class="fa-solid fa-pen"></i></button>
+                    <form method="POST" action="/dev/operators/{{ op.id }}/toggle" class="inline">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="{{ 'bg-slate-800 text-slate-400 hover:bg-slate-700' if op.is_active else 'bg-emerald-900/30 text-emerald-400 hover:bg-emerald-900/50' }} px-3 py-1.5 rounded-lg text-[11px] font-bold">
+                            <i class="fa-solid {{ 'fa-pause' if op.is_active else 'fa-play' }}"></i>
+                        </button>
+                    </form>
+                    <button onclick="openDeleteModal('{{ op.id }}', '{{ op.slug }}', '{{ op.name }}')" class="bg-red-950/40 hover:bg-red-950/60 text-red-400 px-3 py-1.5 rounded-lg text-[11px] font-bold"><i class="fa-solid fa-trash-can"></i></button>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="card p-10 text-center text-slate-500 text-sm">لا يوجد مشغّلون بعد. أضف أول مشغّل من الزر أعلاه.</div>
+        {% endfor %}
+    </div>
+</div>
+
+{# ── مودال: إضافة مشغّل جديد ── #}
+<div id="monthlyReportModal" class="hidden fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+    <div class="card max-w-sm w-full p-6 shadow-2xl text-right" dir="rtl">
+        <div class="flex items-center gap-2 text-teal-400 border-b border-[#253254] pb-3 mb-4">
+            <i class="fa-solid fa-file-excel text-lg"></i><h3 class="text-md font-bold text-white">تصدير تقرير شهري</h3>
+        </div>
+        <form method="GET" action="/dev/monthly-report" class="space-y-3">
+            <div>
+                <label class="block text-[11px] font-bold text-slate-400 mb-1">المشغّل</label>
+                <select name="operator_id" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white">
+                    <option value="">كل المشغّلين (تقرير مجمّع)</option>
+                    {% for op in operators %}
+                    <option value="{{ op.id }}">{{ op.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 mb-1">الشهر</label>
+                    <select name="month" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white">
+                        {% for m in range(1, 13) %}
+                        <option value="{{ m }}" {{ 'selected' if m == current_month else '' }}>{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 mb-1">السنة</label>
+                    <select name="year" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white">
+                        {% for y in range(current_year, current_year - 4, -1) %}
+                        <option value="{{ y }}" {{ 'selected' if y == current_year else '' }}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="flex gap-2 pt-2">
+                <button type="button" onclick="closeModal('monthlyReportModal')" class="flex-1 bg-[#0B1329] text-slate-400 font-bold py-2.5 rounded-xl text-xs">إلغاء</button>
+                <button type="submit" class="flex-1 bg-teal-600 hover:bg-teal-500 text-white font-bold py-2.5 rounded-xl text-xs">تنزيل التقرير</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="newOpModal" class="hidden fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+    <div class="card max-w-md w-full p-6 shadow-2xl text-right" dir="rtl">
+        <div class="flex items-center gap-2 text-indigo-400 border-b border-[#253254] pb-3 mb-4">
+            <i class="fa-solid fa-plus text-lg"></i><h3 class="text-md font-bold text-white">إضافة مشغّل جديد</h3>
+        </div>
+        <form method="POST" action="/dev/operators/new" class="space-y-3">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <div>
+                <label class="block text-[11px] font-bold text-slate-400 mb-1">اسم المشغّل (يظهر للعملاء)</label>
+                <input name="name" required class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white" placeholder="مثال: شبكة غزة نت">
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-400 mb-1">الرابط (slug) — حروف إنجليزية وأرقام وشرطات فقط</label>
+                <input name="slug" required pattern="[a-z0-9-]+" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-mono font-bold text-white" placeholder="gaza-net">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 mb-1">اسم مستخدم الأدمن</label>
+                    <input name="admin_username" required class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 mb-1">كلمة مرور الأدمن</label>
+                    <input name="admin_password" type="password" required minlength="8" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white">
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 mb-1">رقم الدعم الفني</label>
+                    <input name="support_phone" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white" placeholder="0599xxxxxx">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 mb-1">رقم Jawwal Pay</label>
+                    <input name="jawwal_pay_number" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white" placeholder="0599xxxxxx">
+                </div>
+            </div>
+            <div class="flex gap-2 pt-2">
+                <button type="button" onclick="closeModal('newOpModal')" class="flex-1 bg-[#0B1329] text-slate-400 font-bold py-2.5 rounded-xl text-xs">إلغاء</button>
+                <button type="submit" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-xl text-xs">إنشاء المشغّل</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ── مودال: إعادة تعيين كلمة مرور أدمن مشغّل ── #}
+<div id="resetModal" class="hidden fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+    <div class="card max-w-sm w-full p-6 shadow-2xl text-right" dir="rtl">
+        <div class="flex items-center gap-2 text-amber-400 border-b border-[#253254] pb-3 mb-4">
+            <i class="fa-solid fa-key text-lg"></i><h3 class="text-md font-bold text-white">بيانات دخول أدمن: <span id="resetOpName"></span></h3>
+        </div>
+
+        <p class="text-[11px] font-bold text-slate-400 mb-2">اسم المستخدم الحالي: <span id="resetOpCurrentUsername" class="font-mono text-slate-300"></span></p>
+        <form id="usernameForm" method="POST" action="" class="mb-5 pb-5 border-b border-[#253254]">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <div class="flex gap-2">
+                <input name="admin_username" id="editUsernameInput" required class="flex-1 px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white" placeholder="اسم مستخدم جديد">
+                <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 rounded-xl text-xs">تحديث الاسم</button>
+            </div>
+        </form>
+
+        <form id="resetForm" method="POST" action="">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <input name="new_password" type="password" required minlength="8" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white mb-4" placeholder="كلمة مرور جديدة (8 أحرف على الأقل)">
+            <div class="flex gap-2">
+                <button type="button" onclick="closeModal('resetModal')" class="flex-1 bg-[#0B1329] text-slate-400 font-bold py-2.5 rounded-xl text-xs">إلغاء</button>
+                <button type="submit" class="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2.5 rounded-xl text-xs">تحديث كلمة المرور</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ── مودال: حذف مشغّل ── #}
+<div id="deleteModal" class="hidden fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+    <div class="card max-w-sm w-full p-6 shadow-2xl text-right border-red-900/50" dir="rtl">
+        <div class="flex items-center gap-2 text-red-400 border-b border-[#253254] pb-3 mb-4">
+            <i class="fa-solid fa-triangle-exclamation text-lg"></i><h3 class="text-md font-bold text-white">حذف "<span id="deleteOpName"></span>" نهائياً</h3>
+        </div>
+        <p class="text-xs text-red-300/80 mb-3">سيتم حذف كل بطاقات وعمليات هذا المشغّل بلا رجعة. للتأكيد، اكتب الرابط (slug):</p>
+        <p id="deleteOpSlugLabel" class="font-mono text-xs font-bold text-slate-300 bg-[#0B1329] p-2 rounded-lg mb-2 text-center"></p>
+        <form id="deleteForm" method="POST" action="">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <input name="confirm_slug" required class="w-full px-3 py-2.5 bg-[#0B1329] border border-red-900/50 rounded-xl text-xs font-mono font-bold text-white mb-4" placeholder="اكتب الـ slug هنا">
+            <div class="flex gap-2">
+                <button type="button" onclick="closeModal('deleteModal')" class="flex-1 bg-[#0B1329] text-slate-400 font-bold py-2.5 rounded-xl text-xs">إلغاء</button>
+                <button type="submit" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 rounded-xl text-xs">حذف نهائي</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ── مودال: إعدادات حساب المطوّر ── #}
+<div id="settingsModal" class="hidden fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+    <div class="card max-w-sm w-full p-6 shadow-2xl text-right" dir="rtl">
+        <div class="flex items-center gap-2 text-slate-300 border-b border-[#253254] pb-3 mb-4">
+            <i class="fa-solid fa-gear text-lg"></i><h3 class="text-md font-bold text-white">إعدادات حساب المطوّر</h3>
+        </div>
+        <form method="POST" action="/dev/settings/change-username" class="space-y-2 mb-4 pb-3 border-b border-[#253254]">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <p class="text-[11px] font-bold text-slate-400">اسم مستخدم تسجيل الدخول</p>
+            <input name="current_password" type="password" required placeholder="كلمة المرور الحالية (للتأكيد)" class="w-full px-3 py-2 bg-[#0B1329] border border-[#253254] rounded-xl text-xs text-white">
+            <input name="new_username" type="text" required minlength="3" placeholder="اسم المستخدم الجديد" class="w-full px-3 py-2 bg-[#0B1329] border border-[#253254] rounded-xl text-xs text-white">
+            <button type="submit" class="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 rounded-xl text-xs">تحديث اسم المستخدم</button>
+        </form>
+        <form method="POST" action="/dev/settings/change-password" class="space-y-2 mb-4">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <p class="text-[11px] font-bold text-slate-400">كلمة مرور تسجيل الدخول</p>
+            <input name="current_password" type="password" required placeholder="الحالية" class="w-full px-3 py-2 bg-[#0B1329] border border-[#253254] rounded-xl text-xs text-white">
+            <input name="new_password" type="password" required minlength="8" placeholder="الجديدة" class="w-full px-3 py-2 bg-[#0B1329] border border-[#253254] rounded-xl text-xs text-white">
+            <input name="confirm_password" type="password" required minlength="8" placeholder="تأكيد الجديدة" class="w-full px-3 py-2 bg-[#0B1329] border border-[#253254] rounded-xl text-xs text-white">
+            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl text-xs">تحديث</button>
+        </form>
+        <button onclick="closeModal('settingsModal')" class="mt-4 w-full text-slate-500 text-xs font-bold hover:text-slate-300">إغلاق</button>
+    </div>
+</div>
+
+{# ── مودال: تعديل بيانات مشغّل (شبكة) ── #}
+<div id="editOpModal" class="hidden fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+    <div class="card max-w-md w-full p-6 shadow-2xl text-right" dir="rtl">
+        <div class="flex items-center gap-2 text-indigo-400 border-b border-[#253254] pb-3 mb-4">
+            <i class="fa-solid fa-pen text-lg"></i><h3 class="text-md font-bold text-white">تعديل شبكة: <span id="editOpName"></span></h3>
+        </div>
+        <form id="editOpForm" method="POST" action="" class="space-y-3">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <div>
+                <label class="block text-[11px] font-bold text-slate-400 mb-1">اسم المشغّل (للإدارة الداخلية)</label>
+                <input id="editName" name="name" required class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white">
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-400 mb-1">عنوان صفحة الهوتسبوت (يظهر للعملاء) — اختياري</label>
+                <input id="editHotspotTitle" name="hotspot_title" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white" placeholder="اتركه فارغاً لاستخدام اسم المشغّل نفسه">
+                <p class="text-[10px] text-slate-500 mt-1">هذا العنوان هو اللي يشوفه عميل هذه الشبكة بصفحة الشراء — منفصل عن اسم المشغّل الإداري أعلاه.</p>
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-400 mb-1">رابط تسجيل الدخول بجهاز الهوتسبوت (MikroTik)</label>
+                <input id="editHotspotUrl" name="hotspot_login_url" required dir="ltr" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-mono font-bold text-white text-left" placeholder="http://00.00.00.00/login">
+                <p class="text-[10px] text-amber-400/80 mt-1"><i class="fa-solid fa-triangle-exclamation"></i> زر "دخول فوري سريع للشبكة" بمتجر هذا المشغّل يستخدم هذا العنوان تحديداً — لازم يطابق عنوان جهاز الهوتسبوت الفعلي لشبكته.</p>
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-400 mb-1">الرابط (slug) — حروف إنجليزية وأرقام وشرطات فقط</label>
+                <input id="editSlug" name="slug" required pattern="[a-z0-9-]+" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-mono font-bold text-white">
+                <p class="text-[10px] text-amber-400/80 mt-1"><i class="fa-solid fa-triangle-exclamation"></i> تغيير الرابط يغيّر روابط المتجر ولوحة الأدمن الخاصة بهذه الشبكة.</p>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 mb-1">رقم الدعم الفني</label>
+                    <input id="editSupport" name="support_phone" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white" placeholder="0599xxxxxx">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 mb-1">رقم Jawwal Pay</label>
+                    <input id="editJawwal" name="jawwal_pay_number" class="w-full px-3 py-2.5 bg-[#0B1329] border border-[#253254] rounded-xl text-xs font-bold text-white" placeholder="0599xxxxxx">
+                </div>
+            </div>
+            <div class="flex gap-2 pt-2">
+                <button type="button" onclick="closeModal('editOpModal')" class="flex-1 bg-[#0B1329] text-slate-400 font-bold py-2.5 rounded-xl text-xs">إلغاء</button>
+                <button type="submit" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-xl text-xs">حفظ التعديلات</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ── مودال: تأكيد تسجيل الخروج ── #}
+<div id="logoutModal" class="hidden fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+    <div class="card max-w-sm w-full p-6 shadow-2xl text-right" dir="rtl">
+        <h3 class="text-md font-bold text-white mb-2">تسجيل الخروج</h3>
+        <p class="text-xs text-slate-400 mb-5">هل أنت متأكد من رغبتك في الخروج من لوحة المطوّر؟</p>
+        <div class="flex gap-2">
+            <button type="button" onclick="closeModal('logoutModal')" class="flex-1 bg-[#0B1329] text-slate-400 font-bold py-2.5 rounded-xl text-xs">إلغاء</button>
+            <a href="/dev/logout" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 rounded-xl text-xs text-center">نعم، خروج</a>
+        </div>
+    </div>
+</div>
+
+<script>
+function openModal(id)  { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+function switchRevenueTab(tab) {
+    ['single', 'all'].forEach(t => {
+        document.getElementById('revenueTab_' + t).classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById('tabBtn_' + t);
+        btn.classList.toggle('border-indigo-400', t === tab);
+        btn.classList.toggle('text-white', t === tab);
+        btn.classList.toggle('border-transparent', t !== tab);
+        btn.classList.toggle('text-slate-500', t !== tab);
+    });
+}
+
+function openEditModal(btn) {
+    document.getElementById('editOpName').textContent    = btn.dataset.name;
+    document.getElementById('editOpForm').action         = '/dev/operators/' + btn.dataset.id + '/edit';
+    document.getElementById('editName').value            = btn.dataset.name;
+    document.getElementById('editSlug').value             = btn.dataset.slug;
+    document.getElementById('editHotspotTitle').value     = btn.dataset.hotspotTitle;
+    document.getElementById('editHotspotUrl').value       = btn.dataset.hotspotUrl;
+    document.getElementById('editSupport').value          = btn.dataset.support;
+    document.getElementById('editJawwal').value            = btn.dataset.jawwal;
+    openModal('editOpModal');
+}
+</script>
+<script>
+function openResetModal(opId, name, currentUsername) {
+    document.getElementById('resetOpName').textContent = name;
+    document.getElementById('resetOpCurrentUsername').textContent = currentUsername || '—';
+    document.getElementById('editUsernameInput').value = '';
+    document.getElementById('usernameForm').action = '/dev/operators/' + opId + '/edit-admin-username';
+    document.getElementById('resetForm').action = '/dev/operators/' + opId + '/reset-password';
+    openModal('resetModal');
+}
+function openDeleteModal(opId, slug, name) {
+    document.getElementById('deleteOpName').textContent = name;
+    document.getElementById('deleteOpSlugLabel').textContent = slug;
+    document.getElementById('deleteForm').action = '/dev/operators/' + opId + '/delete';
+    openModal('deleteModal');
+}
+
+// ══ وقت الجلسة — ثابت 30 دقيقة من وقت الدخول، لا يتمدّد بالنشاط ═══════════
+const SESSION_WARNING_THRESHOLD = 60; // ثانية — يظهر التنبيه قبل الانتهاء بهذه المدة
+var _sessionWarningShown = false;
+
+function showSessionExpiryWarning(secondsLeft) {
+    if (_sessionWarningShown || document.getElementById('sessionExpiryToast')) return;
+    _sessionWarningShown = true;
+    var toast = document.createElement('div');
+    toast.id = 'sessionExpiryToast';
+    toast.className = 'fixed bottom-5 left-1/2 -translate-x-1/2 z-[999] w-full max-w-sm px-4';
+    toast.innerHTML = `
+        <div class="card border-amber-800 shadow-2xl p-4 flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-950/40 flex items-center justify-center text-amber-400 shrink-0 text-lg">
+                <i class="fa-solid fa-hourglass-half"></i>
+            </div>
+            <div class="flex-1">
+                <p class="text-sm font-bold text-white">جلستك ستنتهي قريباً</p>
+                <p class="text-xs text-slate-400 mt-0.5">ستُسجَّل خروجك تلقائياً خلال <span id="sessionWarningSeconds" class="font-bold text-amber-400">${secondsLeft}</span> ثانية. يُفضّل حفظ أي عمل غير محفوظ الآن.</p>
+            </div>
+            <button onclick="document.getElementById('sessionExpiryToast').remove()" class="text-slate-500 hover:text-slate-300 text-lg leading-none">×</button>
+        </div>`;
+    document.body.appendChild(toast);
+}
+
+function updateSessionWarningCountdown(secondsLeft) {
+    var el = document.getElementById('sessionWarningSeconds');
+    if (el) el.textContent = Math.max(0, secondsLeft);
+}
+
+(function() {
+    var remaining = {{ session_minutes }} * 60 + {{ session_seconds }};
+    var el = document.getElementById('devSessionTimer');
+    function updateDisplay() {
+        if (remaining <= 0) return;
+        var m = Math.floor(remaining / 60), s = remaining % 60;
+        if (el) el.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    }
+    if (remaining > 0 && remaining <= SESSION_WARNING_THRESHOLD) {
+        showSessionExpiryWarning(remaining);
+    }
+    var localTick = setInterval(function() {
+        remaining--;
+        if (remaining <= 0) {
+            clearInterval(localTick); clearInterval(serverSync);
+            if (el) el.textContent = '00:00';
+            window.location.href = '/dev/login';
+            return;
+        }
+        if (remaining <= SESSION_WARNING_THRESHOLD) {
+            showSessionExpiryWarning(remaining);
+            updateSessionWarningCountdown(remaining);
+        }
+        updateDisplay();
+    }, 1000);
+    var serverSync = setInterval(function() {
+        fetch('/dev/session-ping', {method:'POST',
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:'_csrf_token={{ csrf_token }}'
+        }).then(r=>r.json()).then(d=>{
+            if (d.expired) {
+                clearInterval(localTick); clearInterval(serverSync);
+                window.location.href = '/dev/login';
+            } else {
+                remaining = d.remaining;
+                if (remaining <= SESSION_WARNING_THRESHOLD) showSessionExpiryWarning(remaining);
+            }
+        }).catch(()=>{});
+    }, 60000);
+    updateDisplay();
+})();
+
+</script>
+</body>
+</html>

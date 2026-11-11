@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل الدخول</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+        body { font-family:'Cairo',sans-serif; background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 50%,#0f172a 100%); }
+        .orb { position:fixed; border-radius:50%; filter:blur(80px); opacity:.12; pointer-events:none; z-index:0; }
+        .login-card { animation:cardIn .5s cubic-bezier(.34,1.56,.64,1) both; }
+        @keyframes cardIn { from{opacity:0;transform:translateY(30px) scale(.96)} to{opacity:1;transform:translateY(0) scale(1)} }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(8px)} 60%{transform:translateX(-5px)} 80%{transform:translateX(5px)} }
+        .shake { animation:shake .45s ease; }
+        .inp { width:100%; padding:.75rem 2.8rem .75rem 1rem; background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:.875rem; font-size:.875rem; font-weight:600; color:#1e293b; transition:all .2s; outline:none; direction:rtl; }
+        .inp:focus { background:#fff; border-color:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.12); }
+        .inp-icon { position:absolute; right:.85rem; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:.85rem; pointer-events:none; }
+        .eye-btn { position:absolute; left:.85rem; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#94a3b8; font-size:.85rem; padding:0; }
+        .btn-login { width:100%; padding:.875rem; border-radius:.875rem; background:linear-gradient(135deg,#dc2626,#be123c); color:#fff; font-weight:800; font-size:.875rem; box-shadow:0 4px 20px rgba(220,38,38,.35); transition:all .2s; border:none; cursor:pointer; }
+        .btn-login:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 8px 28px rgba(220,38,38,.45); }
+        .btn-login:disabled { opacity:.5; cursor:not-allowed; }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+    {% if login_message %}
+    <div id="opToast" class="fixed top-5 left-1/2 -translate-x-1/2 z-[999] w-full max-w-sm px-4">
+        <div class="bg-white border border-{{ 'emerald-200' if login_message[0]=='success' else 'red-200' }} rounded-2xl shadow-2xl p-4 flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl {{ 'bg-emerald-50 text-emerald-500' if login_message[0]=='success' else 'bg-red-50 text-red-500' }} flex items-center justify-center shrink-0 text-lg">
+                <i class="fa-solid {{ 'fa-circle-check' if login_message[0]=='success' else 'fa-triangle-exclamation' }}"></i>
+            </div>
+            <div class="flex-1">
+                <p class="text-sm font-bold text-slate-800">{{ 'تم بنجاح' if login_message[0]=='success' else 'تنبيه' }}</p>
+                <p class="text-xs text-slate-500 mt-0.5">{{ login_message[1] }}</p>
+            </div>
+            <button onclick="document.getElementById('opToast').remove()" class="text-slate-300 hover:text-slate-500 text-lg leading-none">×</button>
+        </div>
+    </div>
+    <script>setTimeout(()=>document.getElementById('opToast')?.remove(),5000);</script>
+    {% endif %}
+    <div class="orb w-96 h-96 bg-red-600"    style="top:-8rem;right:-8rem;"></div>
+    <div class="orb w-80 h-80 bg-indigo-600" style="bottom:-6rem;left:-6rem;"></div>
+
+    <div class="login-card {{ shake_class }} relative z-10 w-full max-w-sm">
+        <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-8">
+            <div class="text-center mb-7">
+                <div class="w-16 h-16 bg-gradient-to-br from-red-600 to-rose-700 rounded-2xl mx-auto mb-4 flex items-center justify-center text-white text-2xl shadow-lg shadow-red-200">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">تسجيل الدخول</h2>
+                {% if operator_name %}<p class="text-[11px] font-bold text-slate-400 mt-1">{{ operator_name }}</p>{% endif %}
+            </div>
+
+            {# ── بانر الحالة ── #}
+            {% if locked %}
+            <div id="lockBanner" class="flex items-start gap-3 bg-red-50 border border-red-200 rounded-2xl p-4 mb-5 text-right">
+                <div class="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center text-red-500 shrink-0 text-base mt-0.5">
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-extrabold text-red-700 mb-0.5">تم تجميد الوصول مؤقتاً</p>
+                    <p class="text-[11px] text-red-500 leading-relaxed">
+                        تجاوزت الحد المسموح من المحاولات الخاطئة.<br>
+                        يمكنك المحاولة مجدداً بعد:
+                        <span id="countdown" class="font-extrabold text-red-700 bg-red-100 px-1.5 py-0.5 rounded-lg mx-0.5">{{ "%02d"|format(remaining) }}</span> ثانية
+                    </p>
+                </div>
+            </div>
+            {% elif attempts_count > 0 %}
+            <div class="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl p-3.5 mb-5 text-right">
+                <div class="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-500 shrink-0 text-sm">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div>
+                    <p class="text-[11px] font-bold text-amber-700">بيانات غير صحيحة</p>
+                    <p class="text-[10px] text-amber-600">متبقي لك <b>{{ attempts_left }}</b> محاولة قبل الحظر.</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <div id="formWrapper" class="{{ form_disabled }}">
+                <form method="POST" class="space-y-4" autocomplete="off" id="loginForm">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <div class="relative">
+                        <span class="inp-icon"><i class="fa-solid fa-user"></i></span>
+                        <input name="username" id="usernameInp" required {{ 'disabled' if locked else '' }} class="inp" placeholder="اسم المستخدم" autocomplete="username">
+                    </div>
+                    <div class="relative">
+                        <span class="inp-icon"><i class="fa-solid fa-lock"></i></span>
+                        <input name="password" id="passInput" type="password" required {{ 'disabled' if locked else '' }} class="inp" placeholder="كلمة المرور" autocomplete="current-password">
+                        <button type="button" class="eye-btn" onclick="togglePass()">
+                            <i class="fa-regular fa-eye" id="eyeIcon"></i>
+                        </button>
+                    </div>
+                    <button type="submit" id="submitBtn" class="btn-login" {{ 'disabled' if locked else '' }}>
+                        <i class="fa-solid fa-right-to-bracket ml-1"></i>
+                        <span id="btnLabel">{{ btn_label }}</span>
+                    </button>
+                </form>
+            </div>
+
+            <div class="text-center mt-5">
+                <button type="button" onclick="document.getElementById('recoveryModal').classList.remove('hidden')"
+                        class="text-[11px] text-slate-400 hover:text-red-500 font-bold transition-colors">
+                    <i class="fa-solid fa-circle-question ml-1"></i>نسيت كلمة المرور؟
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="recoveryModal" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-7 shadow-2xl text-center" dir="rtl">
+            <h3 class="font-extrabold text-slate-800 mb-2">استعادة الوصول</h3>
+            <p class="text-xs text-slate-500 mb-5 leading-relaxed">
+                تواصل مع الدعم التقني لإعادة تعيين كلمة المرور:<br>
+                <a href="tel:0599018591" class="font-extrabold text-red-600 text-base block mt-2 hover:underline">0599018591</a>
+            </p>
+            <button onclick="document.getElementById('recoveryModal').classList.add('hidden')"
+                    class="w-full bg-slate-800 hover:bg-slate-900 text-white py-2.5 rounded-xl text-xs font-bold transition-all">حسناً، شكراً</button>
+        </div>
+    </div>
+
+    <script>
+    function togglePass() {
+        const inp  = document.getElementById('passInput');
+        const icon = document.getElementById('eyeIcon');
+        inp.type   = inp.type === 'password' ? 'text' : 'password';
+        icon.className = inp.type === 'text' ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye';
+    }
+    (function() {
+        var remaining = {{ remaining }};
+        if (remaining <= 0) return;
+        var el      = document.getElementById('countdown');
+        var banner  = document.getElementById('lockBanner');
+        var wrapper = document.getElementById('formWrapper');
+        var btn     = document.getElementById('submitBtn');
+        var label   = document.getElementById('btnLabel');
+        var uInp    = document.getElementById('usernameInp');
+        var pInp    = document.getElementById('passInput');
+        var iv = setInterval(function() {
+            remaining--;
+            if (remaining <= 0) {
+                clearInterval(iv);
+                if (banner)  banner.style.display  = 'none';
+                if (wrapper) wrapper.className     = '';
+                if (btn)     btn.removeAttribute('disabled');
+                if (uInp)    uInp.removeAttribute('disabled');
+                if (pInp)    pInp.removeAttribute('disabled');
+                if (label)   label.textContent     = 'دخول آمن';
+                return;
+            }
+            if (el) el.textContent = String(remaining).padStart(2, '0');
+        }, 1000);
+    })();
+    </script>
+</body>
+</html>

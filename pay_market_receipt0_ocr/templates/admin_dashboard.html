@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة التحكم</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap'); body{font-family:'Cairo',sans-serif;}</style>
+    <script>
+        if (localStorage.getItem('adminTheme') === 'dark' ||
+            (!localStorage.getItem('adminTheme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+</head>
+<body class="bg-gray-100 dark:bg-[#0B1329] text-slate-800 dark:text-slate-200 p-4 md:p-6 transition-colors duration-200">
+
+{# ══ تنبيه: لسه على كلمة المرور الافتراضية ══ #}
+{% if using_default_password %}
+<div id="defaultPwWarning" class="fixed top-5 left-1/2 -translate-x-1/2 z-[999] w-full max-w-md px-4">
+    <div class="bg-white dark:bg-[#1C2541] border border-amber-200 dark:border-amber-800 rounded-2xl shadow-2xl p-4 flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-500 flex items-center justify-center shrink-0 text-lg">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div class="flex-1">
+            <p class="text-sm font-bold text-slate-800 dark:text-white">تنبيه أمني</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">لسه على كلمة مرور الدخول الافتراضية. غيّرها الآن من قسم "تغيير كلمة المرور" أسفل الصفحة.</p>
+        </div>
+        <button onclick="document.getElementById('defaultPwWarning').remove()" class="text-slate-300 hover:text-slate-500 text-lg leading-none shrink-0">×</button>
+    </div>
+</div>
+{% endif %}
+
+{# ══ Toasts ══ #}
+{% if upload_count is not none %}
+<div id="uploadToast" class="fixed top-5 left-1/2 -translate-x-1/2 z-[999] w-full max-w-sm px-4">
+    <div class="bg-white dark:bg-[#1C2541] border border-emerald-200 dark:border-emerald-800 rounded-2xl shadow-2xl p-4 flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-500 shrink-0 text-lg"><i class="fa-solid fa-circle-check"></i></div>
+        <div class="flex-1">
+            <p class="text-sm font-bold text-slate-800 dark:text-white">تم الرفع بنجاح!</p>
+            <p class="text-xs text-slate-500 mt-0.5">تم استخراج وحفظ <span class="font-bold text-emerald-600">{{ upload_count }} بطاقة</span>
+            {% if upload_duplicates %} — <span class="text-amber-500 font-bold">{{ upload_duplicates }} مكررة تخطّيتها</span>{% endif %}.</p>
+        </div>
+        <button onclick="document.getElementById('uploadToast').remove()" class="text-slate-300 hover:text-slate-500 text-lg leading-none">×</button>
+    </div>
+</div>
+<script>setTimeout(()=>document.getElementById('uploadToast')?.remove(),5000);</script>
+{% endif %}
+
+{% if upload_error %}
+<div id="uploadErrorToast" class="fixed top-5 left-1/2 -translate-x-1/2 z-[999] w-full max-w-sm px-4">
+    <div class="bg-white dark:bg-[#1C2541] border border-red-200 dark:border-red-800 rounded-2xl shadow-2xl p-4 flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-950/40 flex items-center justify-center text-red-500 shrink-0 text-lg"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <div class="flex-1">
+            <p class="text-sm font-bold text-slate-800 dark:text-white">فشل الرفع</p>
+            <p class="text-xs text-slate-500 mt-0.5">{{ upload_error }}</p>
+        </div>
+        <button onclick="document.getElementById('uploadErrorToast').remove()" class="text-slate-300 hover:text-slate-500 text-lg leading-none">×</button>
+    </div>
+</div>
+<script>setTimeout(()=>document.getElementById('uploadErrorToast')?.remove(),6000);</script>
+{% endif %}
+
+{% if settings_message %}
+{% if settings_message[0] == 'success' %}
+<div id="settingsToast" class="fixed top-5 left-1/2 -translate-x-1/2 z-[999] w-full max-w-sm px-4">
+    <div class="bg-white dark:bg-[#1C2541] border border-emerald-200 dark:border-emerald-800 rounded-2xl shadow-2xl p-4 flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-500 shrink-0 text-lg"><i class="fa-solid fa-circle-check"></i></div>
+        <div class="flex-1"><p class="text-sm font-bold text-slate-800 dark:text-white">تم بنجاح</p><p class="text-xs text-slate-500 mt-0.5">{{ settings_message[1] }}</p></div>
+        <button onclick="document.getElementById('settingsToast').remove()" class="text-slate-300 hover:text-slate-500 text-lg leading-none">×</button>
+    </div>
+</div>
+{% else %}
+<div id="settingsToast" class="fixed top-5 left-1/2 -translate-x-1/2 z-[999] w-full max-w-sm px-4">
+    <div class="bg-white dark:bg-[#1C2541] border border-red-200 dark:border-red-800 rounded-2xl shadow-2xl p-4 flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-950/40 flex items-center justify-center text-red-500 shrink-0 text-lg"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <div class="flex-1"><p class="text-sm font-bold text-slate-800 dark:text-white">حدث خطأ</p><p class="text-xs text-slate-500 mt-0.5">{{ settings_message[1] }}</p></div>
+        <button onclick="document.getElementById('settingsToast').remove()" class="text-slate-300 hover:text-slate-500 text-lg leading-none">×</button>
+    </div>
+</div>
+{% endif %}
+<script>setTimeout(()=>document.getElementById('settingsToast')?.remove(),5000);</script>
+{% endif %}
+
+<div class="max-w-5xl mx-auto">
+
+    {# ══ الرأس ══ #}
+    <div class="flex justify-between items-center bg-white dark:bg-[#1C2541] p-5 rounded-xl shadow-sm mb-6 border border-slate-100 dark:border-[#3A506B]/30">
+        <div>
+            <h2 class="text-xl font-bold text-slate-800 dark:text-white">🛠️ لوحة تحكم {{ operator_name }}</h2>
+            <p class="text-xs text-gray-400 dark:text-slate-500 mt-1">
+                <i class="fa-solid fa-clock text-amber-500"></i>
+                الجلسة تنتهي بعد: <span id="sessionTimer" class="font-bold text-amber-600">{{ session_minutes }}:{{ "%02d"|format(session_seconds) }}</span>
+            </p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap justify-end">
+            <button type="button" onclick="toggleAdminTheme()" id="themeBtn"
+                class="bg-slate-100 dark:bg-[#0B1329] text-slate-600 dark:text-indigo-400 border border-slate-200 dark:border-[#3A506B]/50 px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-200 dark:hover:bg-[#3A506B]/30 transition-all">
+                <i id="themeIcon" class="fa-solid fa-moon"></i>
+            </button>
+            <a href="/{{ slug }}/admin/payments" class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 transition-all shadow-md inline-flex items-center gap-1"><i class="fa-solid fa-money-bill-transfer"></i> الدفعات</a>
+            <button type="button" onclick="openModal('activityModal')" class="bg-sky-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-sky-700 transition-all shadow-md">📋 سجل النشاط</button>
+            <button type="button" onclick="openModal('settingsModal')" class="bg-slate-600 dark:bg-slate-700 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-700 transition-all shadow-md">⚙️ الإعدادات</button>
+            <button type="button" onclick="openModal('exportModal')" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all shadow-md">📥 تصدير الأرشيف</button>
+            <button type="button" onclick="openModal('logoutModal')" class="bg-red-500 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-red-600 transition-all shadow-md">تسجيل الخروج</button>
+        </div>
+    </div>
+
+    {# ══ بطاقات الإحصاء ══ #}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-blue-500 text-white p-4 rounded-xl shadow-sm text-center"><div class="text-xs opacity-80">إجمالي الكروت</div><div class="text-2xl font-bold">{{ total_count }}</div></div>
+        <div class="bg-green-500 text-white p-4 rounded-xl shadow-sm text-center"><div class="text-xs opacity-80">الكروت المتاحة للبيع</div><div class="text-2xl font-bold">{{ available_count }}</div></div>
+        <div class="bg-red-500 text-white p-4 rounded-xl shadow-sm text-center"><div class="text-xs opacity-80">الكروت المباعة</div><div class="text-2xl font-bold">{{ sold_count }}</div></div>
+        <div class="bg-amber-500 text-white p-4 rounded-xl shadow-sm text-center"><div class="text-xs opacity-80">إجمالي الإيرادات</div><div class="text-2xl font-bold">{{ "%.1f"|format(revenue) }} ₪</div></div>
+    </div>
+
+    {# ══ تنبيه انخفاض المخزون ══ #}
+    {% if low_stock_items %}
+    <div id="lowStockBanner" class="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl p-4 mb-6 flex items-start gap-3 relative">
+        <button type="button" onclick="document.getElementById('lowStockBanner').remove()"
+            class="absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center text-amber-500 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+            title="إخفاء هذا التنبيه">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+        <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 text-lg">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div class="flex-1 pl-6">
+            <p class="text-sm font-bold text-amber-800 dark:text-amber-300">تنبيه: مخزون منخفض (أقل من {{ low_stock_threshold }} بطاقات)</p>
+            <div class="flex flex-wrap gap-2 mt-2">
+                {% for item in low_stock_items %}
+                <span class="bg-white dark:bg-[#1C2541] border border-amber-200 dark:border-amber-900/40 text-amber-700 dark:text-amber-400 text-[11px] font-bold px-3 py-1 rounded-full">
+                    {{ item.profile }}{% if item.duration_hours %} — {% if item.duration_hours == 720 %}بطاقة شهرية{% else %}{{ item.duration_hours }} ساعة{% endif %}{% endif %} — {{ item.price }}₪: باقي {{ item.avail }} فقط
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ══ رفع الملفات ══ #}
+    <div class="bg-white dark:bg-[#1C2541] p-6 rounded-xl shadow-sm mb-6 border border-slate-100 dark:border-[#3A506B]/30">
+        <h3 class="text-sm font-bold mb-1 text-gray-700 dark:text-slate-300">📤 رفع ملف الكروت الجديد</h3>
+        <p class="text-[11px] text-slate-400 mb-3">الأنواع المقبولة: PDF، TXT، Excel — الحجم الأقصى: <b>5MB</b></p>
+        <form method="POST" enctype="multipart/form-data" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <div>
+                <label class="block text-xs mb-1 text-gray-500 dark:text-slate-400 font-bold">اختر ملف الكروت:</label>
+                <input type="file" name="pdf_file" accept=".pdf,.txt,.xlsx,.xls" required class="w-full text-xs border dark:border-[#3A506B]/50 p-2 rounded-lg dark:bg-[#0B1329] dark:text-slate-300">
+            </div>
+            <div>
+                <label class="block text-xs mb-1 text-gray-500 dark:text-slate-400 font-bold">مدة الكرت:</label>
+                <select name="file_hours" id="upHours" required class="w-full text-xs border dark:border-[#3A506B]/50 p-2.5 rounded-lg font-bold dark:bg-[#0B1329] dark:text-slate-300">
+                    <option value="" disabled selected>اختر المدة…</option>
+                    {% for o in duration_options %}
+                    <option value="{{ o.hours }}" data-price="{{ o.price }}" data-profile="{{ o.profile }}">{{ o.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs mb-1 text-gray-500 dark:text-slate-400 font-bold">سعر الكرت (شيكل):</label>
+                <input type="number" name="file_price" id="upPrice" required min="0.01" max="1000" step="0.01" inputmode="decimal" dir="ltr" placeholder="يتعبّى تلقائياً"
+                       class="w-full text-xs border dark:border-[#3A506B]/50 p-2.5 rounded-lg font-bold dark:bg-[#0B1329] dark:text-slate-300">
+            </div>
+            <div>
+                <label class="block text-xs mb-1 text-gray-500 dark:text-slate-400 font-bold">السرعة (بروفايل):</label>
+                <input type="text" name="file_profile" id="upProfile" required maxlength="30" list="profileOptions" dir="ltr" autocomplete="off" placeholder="يتعبّى تلقائياً"
+                       class="w-full text-xs border dark:border-[#3A506B]/50 p-2.5 rounded-lg font-bold dark:bg-[#0B1329] dark:text-slate-300">
+                <datalist id="profileOptions">
+                    <option value="2M"><option value="3M"><option value="5M"><option value="10M">
+                </datalist>
+            </div>
+            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg text-xs font-bold transition-all">⚡ بدء الاستخراج والحفظ فورا</button>
+        </form>
+        <div id="upPreview" class="hidden mt-3 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 rounded-lg px-3 py-2 text-xs text-indigo-700 dark:text-indigo-300 font-bold">
+            <i class="fa-solid fa-store"></i> هيك بتظهر الفئة بالمتجر:
+            <span id="pvHours" class="font-black"></span> · <span id="pvPrice" class="font-black"></span> شيكل · <span id="pvSpeed"></span>
+        </div>
+        <p class="text-[10px] text-slate-400 mt-2">اختار مدة الكرت وبيتعبّى السعر والسرعة لحالهم (من آخر سعر وسرعة بعتهم لهاي المدة، أو القيمة المعتادة). عدّلهم لو بيعك مختلف، وبتظهر الفئة بالمتجر مباشرة بعد الرفع.</p>
+    </div>
+    <script>
+    (function () {
+        var sel = document.getElementById('upHours'), price = document.getElementById('upPrice'),
+            prof = document.getElementById('upProfile'), box = document.getElementById('upPreview');
+        if (!sel || !price || !prof || !box) return;
+        function speed(p) {
+            var m = /^\s*(\d+(?:\.\d+)?)\s*(?:m|mb|mbps|mega)?\s*$/i.exec(p || '');
+            return m ? 'سرعة ' + m[1] + ' ميجا' : (p || '');
+        }
+        function render() {
+            if (!sel.value) { box.classList.add('hidden'); return; }
+            document.getElementById('pvHours').textContent = sel.options[sel.selectedIndex].text;
+            document.getElementById('pvPrice').textContent = price.value || '—';
+            document.getElementById('pvSpeed').textContent = speed(prof.value) || '—';
+            box.classList.remove('hidden');
+        }
+        sel.addEventListener('change', function () {
+            var o = sel.options[sel.selectedIndex];
+            price.value = o.getAttribute('data-price');
+            prof.value = o.getAttribute('data-profile');
+            render();
+        });
+        price.addEventListener('input', render);
+        prof.addEventListener('input', render);
+    })();
+    </script>
+
+    {# ══ المخزون المتاح حسب الفئة ══ #}
+    <div class="bg-white dark:bg-[#1C2541] p-6 rounded-xl shadow-sm mb-6 border border-slate-100 dark:border-[#3A506B]/30">
+        <h3 class="text-sm font-bold mb-3 text-gray-700 dark:text-slate-300">📦 المخزون المتاح حسب الفئة</h3>
+        {% if stock_by_category %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+                <thead>
+                    <tr class="bg-gray-50 dark:bg-[#0B1329] border-b dark:border-[#3A506B]/30">
+                        <th class="p-2.5 text-right dark:text-slate-400">الفئة</th>
+                        <th class="p-2.5 text-right dark:text-slate-400">السعر</th>
+                        <th class="p-2.5 text-right dark:text-slate-400">المتاح الآن</th>
+                        <th class="p-2.5 text-right dark:text-slate-400">إجراء</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cat in stock_by_category %}
+                    <tr class="border-b dark:border-[#3A506B]/20 last:border-0">
+                        <td class="p-2.5 font-bold dark:text-slate-300">{{ cat.hours_label or ('بروفايل ' + cat.profile) }}{% if cat.hours_label %} <span class="text-slate-400 font-normal">({{ cat.profile }})</span>{% endif %}</td>
+                        <td class="p-2.5 dark:text-slate-400">
+                            {% if cat.avail > 0 %}
+                            <button type="button" title="تعديل سعر هالفئة"
+                                data-price="{{ cat.price }}" data-profile="{{ cat.profile }}" data-hours="{{ cat.duration_hours or 0 }}"
+                                data-label="{{ cat.hours_label or ('بروفايل ' + cat.profile) }}" data-avail="{{ cat.avail }}"
+                                onclick="openEditPriceModal(this)"
+                                class="inline-flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50 dark:text-indigo-400 px-2.5 py-1 rounded-lg font-bold transition-colors">
+                                {{ cat.price }}₪ <i class="fa-solid fa-pen text-[9px]"></i>
+                            </button>
+                            {% else %}{{ cat.price }}₪{% endif %}
+                        </td>
+                        <td class="p-2.5">
+                            <span class="px-2 py-0.5 rounded-full font-bold {% if cat.avail < low_stock_threshold %}bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400{% else %}bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400{% endif %}">{{ cat.avail }} بطاقة</span>
+                        </td>
+                        <td class="p-2.5">
+                            <div class="flex items-center gap-1.5">
+                                <a href="/{{ slug }}/admin/export-category?cat_price={{ cat.price }}&cat_profile={{ cat.profile }}&cat_hours={{ cat.duration_hours }}"
+                                    class="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50 dark:text-emerald-400 px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-file-excel"></i> تصدير إكسل
+                                </a>
+                                <form method="POST" action="/{{ slug }}/admin/delete-vouchers" id="deleteCatForm_{{ loop.index }}">
+                                    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="delete_type" value="category">
+                                    <input type="hidden" name="cat_price" value="{{ cat.price }}">
+                                    <input type="hidden" name="cat_profile" value="{{ cat.profile }}">
+                                    <input type="hidden" name="cat_hours" value="{{ cat.duration_hours }}">
+                                </form>
+                                <button type="button"
+                                    onclick="openDeleteCategoryModal('deleteCatForm_{{ loop.index }}', '{{ (cat.hours_label or cat.profile) | replace("'", "") }}', {{ cat.price }}, {{ cat.avail }})"
+                                    class="bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/30 dark:hover:bg-rose-950/50 dark:text-rose-400 px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-trash"></i> حذف الفئة
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-xs font-bold text-slate-400 text-center py-3">لا توجد أي بطاقات مرفوعة بعد.</p>
+        {% endif %}
+    </div>
+
+    {# ── نافذة تأكيد حذف فئة، بتصميم متسق مع بقية الموقع بدل نافذة المتصفح الافتراضية ── #}
+    <div id="deleteCategoryModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white dark:bg-[#1C2541] rounded-2xl p-6 max-w-sm w-full">
+            <div class="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/30 text-rose-500 dark:text-rose-400 flex items-center justify-center text-xl mb-3">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <p class="text-sm font-bold text-slate-800 dark:text-white mb-1.5">تأكيد حذف الفئة</p>
+            <p id="deleteCategoryModalText" class="text-xs text-slate-500 dark:text-slate-400 mb-5 leading-relaxed"></p>
+            <div class="flex gap-2">
+                <button type="button" onclick="closeDeleteCategoryModal()"
+                    class="flex-1 bg-slate-100 dark:bg-[#0B1329] hover:bg-slate-200 text-slate-600 dark:text-slate-300 py-2.5 rounded-xl text-xs font-bold">
+                    إلغاء
+                </button>
+                <button type="button" onclick="confirmDeleteCategory()"
+                    class="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-trash"></i> نعم، احذف
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ══ نافذة تعديل سعر فئة ══ #}
+    <div id="editPriceModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white dark:bg-[#1C2541] rounded-2xl p-6 max-w-sm w-full">
+            <div class="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/30 text-indigo-500 dark:text-indigo-400 flex items-center justify-center text-xl mb-3">
+                <i class="fa-solid fa-tag"></i>
+            </div>
+            <p class="text-sm font-bold text-slate-800 dark:text-white mb-1">تعديل سعر الفئة</p>
+            <p id="editPriceCat" class="text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-3"></p>
+            <form id="editPriceForm" method="POST" action="/{{ slug }}/admin/update-category-price">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="cat_price" id="editPriceOld">
+                <input type="hidden" name="cat_profile" id="editPriceProfile">
+                <input type="hidden" name="cat_hours" id="editPriceHours">
+                <label class="block text-xs mb-1 text-gray-500 dark:text-slate-400 font-bold">السعر الجديد (شيكل):</label>
+                <input type="number" name="new_price" id="editPriceNew" required min="0.01" max="1000" step="0.01"
+                       inputmode="decimal" dir="ltr" placeholder="مثال: 1.5" oninput="updateEditPricePreview()"
+                       class="w-full text-sm border dark:border-[#3A506B]/50 p-2.5 rounded-lg font-bold dark:bg-[#0B1329] dark:text-slate-300 mb-2">
+                <p id="editPricePreview" class="text-[11px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed min-h-[2.5rem]"></p>
+                <div class="flex gap-2">
+                    <button type="button" onclick="closeModal('editPriceModal')"
+                        class="flex-1 bg-slate-100 dark:bg-[#0B1329] hover:bg-slate-200 text-slate-600 dark:text-slate-300 py-2.5 rounded-xl text-xs font-bold">
+                        إلغاء
+                    </button>
+                    <button type="submit" id="editPriceSubmit" disabled
+                        class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-check"></i> تأكيد التغيير
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# ══ بحث مشتريات عميل ══ #}
+    <div class="bg-white dark:bg-[#1C2541] p-6 rounded-xl shadow-sm mb-6 border border-slate-100 dark:border-[#3A506B]/30">
+        <h3 class="text-sm font-bold mb-3 text-gray-700 dark:text-slate-300">🔍 البحث عن مشتريات عميل</h3>
+        <p class="text-[11px] text-slate-400 mb-3">أدخل رقم هاتف العميل لعرض كل عمليات الشراء المرتبطة به (لإرسال البطاقات أو رقم العملية له في حال نسيانه) — وحدّد يوم معيّن اختيارياً لو عنده مشتريات كثيرة بأيام مختلفة</p>
+        <form method="GET" action="/{{ slug }}/admin/dashboard" class="flex flex-wrap gap-2">
+            <input type="text" name="search_phone" value="{{ customer_search_phone }}" placeholder="059xxxxxxxx"
+                class="flex-1 min-w-[140px] px-3 py-2.5 bg-slate-50 dark:bg-[#0B1329] border border-slate-200 dark:border-[#3A506B]/50 rounded-xl text-xs font-semibold focus:outline-none focus:border-indigo-400 text-center font-mono dark:text-slate-300">
+            <input type="date" name="search_date" value="{{ customer_search_date }}"
+                class="px-3 py-2.5 bg-slate-50 dark:bg-[#0B1329] border border-slate-200 dark:border-[#3A506B]/50 rounded-xl text-xs font-semibold focus:outline-none focus:border-indigo-400 dark:text-slate-300">
+            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1">
+                <i class="fa-solid fa-magnifying-glass"></i> بحث
+            </button>
+            {% if customer_search_phone or customer_search_date %}
+            <a href="/{{ slug }}/admin/dashboard" class="bg-slate-100 dark:bg-[#0B1329] hover:bg-slate-200 text-slate-600 dark:text-slate-400 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1">
+                <i class="fa-solid fa-xmark"></i> مسح
+            </a>
+            {% endif %}
+        </form>
+        <p class="text-[10px] text-slate-400 mt-1">ملاحظة: تصفية اليوم تعتمد توقيت UTC المخزّن بقاعدة البيانات، فقد يختلف حد بداية اليوم بضع ساعات عن توقيتك المحلي.</p>
+        {% if customer_search_phone %}
+            {% if customer_groups %}
+            <div class="mt-4">
+                <div class="text-xs font-bold text-slate-500 mb-2">نتائج البحث للرقم <span class="font-mono">{{ customer_search_phone }}</span>{% if customer_search_date %} بتاريخ <span class="font-mono">{{ customer_search_date }}</span>{% endif %} — {{ customer_groups|length }} عملية:</div>
+                {% for g in customer_groups %}
+                <div class="bg-slate-50 dark:bg-[#0B1329] border border-slate-100 dark:border-[#3A506B]/30 rounded-xl p-4 mb-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-key text-indigo-500"></i>
+                            <span class="text-[11px] text-slate-400 font-bold">رمز المحفظة:</span>
+                            <span class="font-mono font-bold text-sm text-slate-700 dark:text-slate-300 tracking-widest">{{ g.wallet_code or 'بدون رمز' }}</span>
+                        </div>
+                        <div class="text-[11px] text-slate-400 font-bold">{{ g.created_at }} — الإجمالي: {{ "%.1f"|format(g.total) }} ₪ — {{ g.cards|length }} بطاقة</div>
+                    </div>
+                    <table class="w-full text-right text-xs">
+                        <thead><tr class="text-slate-400"><th class="p-2">Username</th><th class="p-2">Password</th><th class="p-2">السعر</th><th class="p-2">البروفايل</th></tr></thead>
+                        <tbody>
+                            {% for c in g.cards %}
+                            <tr class="border-b border-slate-50 dark:border-[#3A506B]/20 last:border-0">
+                                <td class="p-2 font-mono">{{ c.username }}</td>
+                                <td class="p-2 font-mono">{{ c.password }}</td>
+                                <td class="p-2">{{ c.price }} ₪</td>
+                                <td class="p-2">{{ c.profile }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="mt-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 text-amber-700 dark:text-amber-400 text-center py-3 rounded-xl text-xs font-bold">
+                <i class="fa-solid fa-circle-info"></i> لا توجد أي عمليات شراء لرقم <span class="font-mono">{{ customer_search_phone }}</span>{% if customer_search_date %} بتاريخ <span class="font-mono">{{ customer_search_date }}</span>{% endif %}.
+            </div>
+            {% endif %}
+        {% endif %}
+    </div>
+
+    {# ══ مستودع البطاقات (بـ pagination + فلتر سيرفر-سايد) ══ #}
+    <div class="bg-white dark:bg-[#1C2541] p-6 rounded-xl shadow-sm overflow-x-auto border border-slate-100 dark:border-[#3A506B]/30 mb-6">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-sm font-bold text-gray-700 dark:text-slate-300">📋 مستودع الكروت الحالي داخل الموقع</h3>
+            <button type="button" onclick="openModal('deleteModal')" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1 transition-all shadow-md">
+                <i class="fa-solid fa-trash-can"></i> إدارة حذف البطاقات
+            </button>
+        </div>
+
+        {# شريط الفلتر #}
+        <div class="flex flex-col sm:flex-row gap-3 mb-4 p-4 bg-slate-50 dark:bg-[#0B1329] rounded-xl border border-slate-100 dark:border-[#3A506B]/20">
+            <div class="relative flex-1">
+                <span class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 text-sm pointer-events-none"><i class="fa-solid fa-magnifying-glass"></i></span>
+                <input type="text" id="tableSearch" placeholder="ابحث بالـ Username أو Password أو Profile أو ID..."
+                    class="w-full pr-9 pl-3 py-2.5 bg-white dark:bg-[#1C2541] border border-slate-200 dark:border-[#3A506B]/50 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-400 dark:text-slate-300 transition-all">
+            </div>
+            <div class="flex gap-2 shrink-0">
+                <select id="statusFilter" class="px-3 py-2.5 bg-white dark:bg-[#1C2541] border border-slate-200 dark:border-[#3A506B]/50 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer">
+                    <option value="">🔘 كل الحالات</option>
+                    <option value="available">🟢 متاح فقط</option>
+                    <option value="sold">🔴 مباع فقط</option>
+                </select>
+                <button type="button" onclick="clearTableFilters()" class="px-3 py-2.5 bg-slate-200 dark:bg-[#0B1329] hover:bg-slate-300 text-slate-600 dark:text-slate-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1">
+                    <i class="fa-solid fa-xmark"></i> مسح
+                </button>
+            </div>
+        </div>
+        <div id="tableInfo" class="hidden text-xs text-slate-400 font-bold mb-3 px-1"></div>
+
+        {# الجدول — يُملأ بـ JS #}
+        <form id="deleteForm" action="/{{ slug }}/admin/delete-vouchers" method="POST">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="delete_type" id="finalDeleteType" value="selected">
+            <table class="w-full border-collapse text-right text-xs">
+                <thead>
+                    <tr class="bg-gray-50 dark:bg-[#0B1329] border-b dark:border-[#3A506B]/30">
+                        <th class="p-3 text-center w-12"><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)" class="rounded cursor-pointer h-4 w-4"></th>
+                        <th class="p-3 dark:text-slate-400">#</th>
+                        <th class="p-3 dark:text-slate-400">بيانات الكرت</th>
+                        <th class="p-3 dark:text-slate-400">السعر</th>
+                        <th class="p-3 dark:text-slate-400">البروفايل</th>
+                        <th class="p-3 dark:text-slate-400">الساعات</th>
+                        <th class="p-3 dark:text-slate-400">الحالة</th>
+                        <th class="p-3 dark:text-slate-400">إجراءات</th>
+                    </tr>
+                </thead>
+                <tbody id="voucherTableBody">
+                    <tr><td colspan="7" class="text-center py-8 text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin ml-2"></i> جارٍ التحميل...</td></tr>
+                </tbody>
+            </table>
+        </form>
+
+        {# Pagination #}
+        <div id="paginationWrap" class="flex items-center justify-between mt-4 pt-3 border-t dark:border-[#3A506B]/30 hidden">
+            <div id="pageInfo" class="text-xs text-slate-400 font-bold"></div>
+            <div class="flex gap-1" id="pageButtons"></div>
+        </div>
+    </div>
+
+</div>{# /max-w-5xl #}
+
+{# ══ Modals ══ #}
+
+{# سجل النشاط #}
+<div id="activityModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onclick="if(event.target===this)closeModal('activityModal')">
+    <div class="bg-white dark:bg-[#1C2541] rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl border border-slate-100 dark:border-[#3A506B]/30 overflow-hidden text-right" dir="rtl">
+        <div class="flex items-center justify-between p-5 border-b dark:border-[#3A506B]/30 shrink-0">
+            <h3 class="text-sm font-bold text-slate-700 dark:text-slate-300">📋 سجل نشاط المسؤول</h3>
+            <div class="flex items-center gap-3">
+                <span class="text-[11px] text-slate-400 font-bold">آخر 50 حدث</span>
+                <button type="button" onclick="confirmClearAuditLog()" class="text-[11px] text-red-400 hover:text-red-600 font-bold flex items-center gap-1 transition-colors"><i class="fa-solid fa-trash-can"></i> مسح السجل</button>
+                <button type="button" onclick="closeModal('activityModal')" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm" title="إغلاق"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="overflow-auto flex-1 min-h-0">
+            <table class="w-full text-right text-xs">
+                <thead class="sticky top-0 bg-slate-50 dark:bg-[#0B1329] z-10">
+                    <tr class="text-slate-400 border-b dark:border-[#3A506B]/30">
+                        <th class="p-3">الوقت</th>
+                        <th class="p-3">الحدث</th>
+                        <th class="p-3">التفاصيل</th>
+                        <th class="p-3">IP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in audit_logs %}
+                    <tr class="border-b dark:border-[#3A506B]/20 hover:bg-slate-50 dark:hover:bg-[#3A506B]/10">
+                        <td class="p-3 font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ log.event_time }}</td>
+                        <td class="p-3 font-bold whitespace-nowrap
+                            {% if 'FAIL' in log.action or 'LOCKOUT' in log.action %}text-red-500
+                            {% elif 'DELETE' in log.action %}text-orange-500
+                            {% elif 'SUCCESS' in log.action %}text-emerald-600 dark:text-emerald-400
+                            {% elif 'EXPORT' in log.action or 'BACKUP' in log.action or 'RESTORE' in log.action %}text-indigo-500
+                            {% else %}text-slate-700 dark:text-slate-300{% endif %}">{{ log.action }}</td>
+                        <td class="p-3 text-slate-600 dark:text-slate-400 max-w-xs truncate" title="{{ log.details }}">{{ log.details }}</td>
+                        <td class="p-3 font-mono text-slate-400">{{ log.ip_address }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center py-8 text-slate-400 text-xs">لا توجد سجلات بعد.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# حذف #}
+<div id="deleteModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white dark:bg-[#1C2541] rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 dark:border-[#3A506B]/30 text-right" dir="rtl">
+        <div class="flex items-center gap-2 text-red-600 border-b dark:border-[#3A506B]/30 pb-3 mb-4">
+            <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+            <h3 class="text-md font-bold">تأكيد خيارات حذف البطاقات</h3>
+        </div>
+        <div class="space-y-3 mb-6">
+            <label class="flex items-start gap-3 p-3 bg-gray-50 dark:bg-[#0B1329] border dark:border-[#3A506B]/30 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-[#3A506B]/20">
+                <input type="radio" name="delete_type_radio" value="selected" checked class="text-red-500 h-4 w-4 mt-0.5 shrink-0">
+                <div><span class="text-xs font-bold text-gray-800 dark:text-slate-300 block">حذف البطاقات المحددة يدوياً</span>
+                <span class="text-[10px] text-gray-400">حذف الكروت التي وضعت بجوارها علامة (✓) في الجدول فقط.</span></div>
+            </label>
+            <label class="flex items-start gap-3 p-3 bg-gray-50 dark:bg-[#0B1329] border dark:border-[#3A506B]/30 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-[#3A506B]/20">
+                <input type="radio" name="delete_type_radio" value="sold" class="text-red-500 h-4 w-4 mt-0.5 shrink-0">
+                <div><span class="text-xs font-bold text-gray-800 dark:text-slate-300 block">حذف البطاقات المباعة فقط</span>
+                <span class="text-[10px] text-gray-400">تنظيف النظام من الكروت التي اشتراها الزبائن وحُفظت في الأرشيف.</span></div>
+            </label>
+            <label class="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/30 rounded-xl cursor-pointer">
+                <input type="radio" name="delete_type_radio" value="all" class="text-red-500 h-4 w-4 mt-0.5 shrink-0">
+                <div><span class="text-xs font-bold text-red-600 block">تصفير شامل (حذف جميع البطاقات)</span>
+                <span class="text-[10px] text-red-400">مسح كل كروت النظام (المباعة والمتاحة) وإعادة قاعدة البيانات فارغة تماماً.</span></div>
+            </label>
+        </div>
+        <div class="flex gap-2 justify-end border-t dark:border-[#3A506B]/30 pt-4">
+            <button type="button" onclick="closeModal('deleteModal')" class="bg-gray-100 dark:bg-[#0B1329] hover:bg-gray-200 text-gray-600 dark:text-slate-400 font-bold px-4 py-2 rounded-xl text-xs">إلغاء</button>
+            <button type="button" onclick="submitDeleteForm()" class="bg-red-500 hover:bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-xs flex items-center gap-1"><i class="fa-solid fa-trash-can"></i> تنفيذ الحذف</button>
+        </div>
+    </div>
+</div>
+
+{# تصدير #}
+
+<div id="exportModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white dark:bg-[#1C2541] rounded-2xl p-6 shadow-2xl text-right w-80 border border-slate-100 dark:border-[#3A506B]/30">
+        <h3 class="font-bold mb-1 text-sm text-slate-800 dark:text-white">📥 خيارات تصدير الأرشيف</h3>
+        <p class="text-[11px] text-slate-400 mb-4">الأرشيف = بيانات البطاقات. تقرير المبيعات = معاملات الزبائن مع بطاقاتهم.</p>
+        <p class="text-[10px] font-extrabold text-slate-500 mb-2 uppercase tracking-wider">أرشيف البطاقات (CSV)</p>
+        <a href="/{{ slug }}/admin/export-archive?status=sold" class="block bg-red-50 dark:bg-red-950/30 p-3 rounded-xl mb-2 text-xs font-bold text-red-700 dark:text-red-400 hover:bg-red-100 border border-red-100 dark:border-red-900/30">تصدير البطاقات المباعة</a>
+        <a href="/{{ slug }}/admin/export-archive?status=available" class="block bg-emerald-50 dark:bg-emerald-950/30 p-3 rounded-xl mb-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 border border-emerald-100 dark:border-emerald-900/30">تصدير البطاقات المتاحة</a>
+        <a href="/{{ slug }}/admin/export-archive" class="block bg-slate-50 dark:bg-[#0B1329] p-3 rounded-xl mb-3 text-xs font-bold text-slate-700 dark:text-slate-400 hover:bg-slate-100 border border-slate-200 dark:border-[#3A506B]/30">تصدير جميع البيانات</a>
+        <p class="text-[10px] font-extrabold text-slate-500 mb-2 uppercase tracking-wider">تقرير المبيعات (Excel)</p>
+        <a href="/{{ slug }}/admin/export-sales-excel" class="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/30 p-3 rounded-xl text-xs font-bold text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-900/30">
+            <i class="fa-solid fa-file-excel text-base"></i>
+            <div><div>تصدير تقرير xlsx</div><div class="font-normal text-[10px] opacity-70">هاتف + محفظة + تاريخ + بطاقة</div></div>
+        </a>
+        <button onclick="closeModal('exportModal')" class="mt-4 w-full text-slate-400 text-xs font-bold hover:text-slate-600">إلغاء</button>
+    </div>
+</div>
+
+{# إعدادات #}
+<div id="settingsModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white dark:bg-[#1C2541] rounded-2xl max-w-sm w-full p-6 shadow-2xl text-right border border-slate-100 dark:border-[#3A506B]/30 max-h-[90vh] overflow-y-auto" dir="rtl">
+
+        {# ── بيانات الشبكة العامة (يعدّلها المشغّل بنفسه) ── #}
+        <div class="flex items-center gap-2 text-slate-700 dark:text-slate-300 border-b dark:border-[#3A506B]/30 pb-3 mb-4">
+            <i class="fa-solid fa-tower-broadcast text-lg"></i>
+            <h3 class="text-md font-bold">بيانات الشبكة</h3>
+        </div>
+        <form method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="update_profile" value="1">
+            <div>
+                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">شعار الشبكة (لوجو)</label>
+                <div class="flex items-center gap-3">
+                    {% if operator_logo_filename %}
+                    <img src="/static/logos/{{ operator_logo_filename }}" alt="الشعار الحالي" class="w-12 h-12 rounded-xl object-cover border border-slate-200 dark:border-[#3A506B]/50 shrink-0">
+                    {% else %}
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-wifi"></i></div>
+                    {% endif %}
+                    <input type="file" name="logo_file" accept="image/png,image/jpeg,image/webp"
+                        class="flex-1 text-[11px] file:ml-2 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 dark:file:bg-indigo-950/30 dark:file:text-indigo-400 file:font-bold dark:text-slate-400">
+                </div>
+                {% if operator_logo_filename %}
+                <label class="flex items-center gap-1.5 mt-2 text-[11px] font-bold text-rose-500 cursor-pointer">
+                    <input type="checkbox" name="remove_logo" value="1"> إزالة الشعار والرجوع لأيقونة الواي فاي الافتراضية
+                </label>
+                {% endif %}
+                <p class="text-[10px] text-slate-400 mt-1">PNG أو JPG أو WEBP — حتى 2 ميجابايت.</p>
+                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 mt-3">حجم عرض الشعار بالمتجر</label>
+                <select name="logo_size" class="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#0B1329] border border-slate-200 dark:border-[#3A506B]/50 rounded-xl text-xs font-bold focus:outline-none dark:text-slate-300">
+                    <option value="small"  {{ 'selected' if operator_logo_size == 'small'  else '' }}>صغير</option>
+                    <option value="medium" {{ 'selected' if operator_logo_size == 'medium' else '' }}>متوسط (افتراضي)</option>
+                    <option value="large"  {{ 'selected' if operator_logo_size == 'large'  else '' }}>كبير</option>
+                    <option value="xlarge" {{ 'selected' if operator_logo_size == 'xlarge' else '' }}>كبير جداً</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">رقم الدعم الفني (يظهر للعملاء)</label>
+                <input name="support_phone" value="{{ operator_support_phone }}" placeholder="0599xxxxxx" class="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#0B1329] border border-slate-200 dark:border-[#3A506B]/50 rounded-xl text-xs font-bold focus:outline-none dark:text-slate-300">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">رقم Jawwal Pay</label>
+                <input name="jawwal_pay_number" value="{{ operator_jawwal_number }}" placeholder="0599xxxxxx" class="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#0B1329] border border-slate-200 dark:border-[#3A506B]/50 rounded-xl text-xs font-bold focus:outline-none dark:text-slate-300">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">عنوان صفحة الهوتسبوت (اختياري)</label>
+                <input name="hotspot_title" value="{{ operator_hotspot_title }}" placeholder="اتركه فارغاً لاستخدام اسم شبكتك" class="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#0B1329] border border-slate-200 dark:border-[#3A506B]/50 rounded-xl text-xs font-bold focus:outline-none dark:text-slate-300">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">رابط تسجيل الدخول بجهاز الهوتسبوت (MikroTik)</label>
+                <input name="hotspot_login_url" value="{{ operator_hotspot_login_url }}" dir="ltr" required class="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#0B1329] border border-slate-200 dark:border-[#3A506B]/50 rounded-xl text-xs font-mono font-bold text-left focus:outline-none dark:text-slate-300">
+                <p class="text-[10px] text-amber-500 mt-1"><i class="fa-solid fa-triangle-exclamation"></i> زر "دخول فوري سريع للشبكة" بمتجرك يستخدم هذا العنوان — لازم يطابق عنوان جهاز الهوتسبوت الفعلي عندك.</p>
+            </div>
+            <div class="flex justify-end pt-1">
+                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2 rounded-xl text-xs">حفظ بيانات الشبكة</button>
+            </div>
+        </form>
+
+        {# ── تغيير كلمة المرور ── #}
+        <div class="flex items-center gap-2 text-slate-700 dark:text-slate-300 border-t dark:border-[#3A506B]/30 pt-4 border-b dark:border-[#3A506B]/30 pb-3 mb-4">
+            <i class="fa-solid fa-key text-lg"></i>
+            <h3 class="text-md font-bold">تغيير كلمة مرور المسؤول</h3>
+        </div>
+        <p class="text-[11px] text-slate-400 mb-4">يجب أن تكون كلمة المرور الجديدة <b>8 أحرف على الأقل</b>.</p>
+        <form method="POST" class="space-y-3">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="change_password" value="1">
+            <div>
+                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">كلمة المرور الحالية</label>
+                <input type="password" name="current_password" required class="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#0B1329] border border-slate-200 dark:border-[#3A506B]/50 rounded-xl text-xs font-bold focus:outline-none dark:text-slate-300">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">كلمة المرور الجديدة (8+ أحرف)</label>
+                <input type="password" name="new_password" required minlength="8" class="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#0B1329] border border-slate-200 dark:border-[#3A506B]/50 rounded-xl text-xs font-bold focus:outline-none dark:text-slate-300">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">تأكيد كلمة المرور الجديدة</label>
+                <input type="password" name="confirm_password" required minlength="8" class="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#0B1329] border border-slate-200 dark:border-[#3A506B]/50 rounded-xl text-xs font-bold focus:outline-none dark:text-slate-300">
+            </div>
+            <div class="flex gap-2 justify-end pt-2">
+                <button type="button" onclick="closeModal('settingsModal')" class="bg-gray-100 dark:bg-[#0B1329] hover:bg-gray-200 text-gray-600 dark:text-slate-400 font-bold px-4 py-2 rounded-xl text-xs">إلغاء</button>
+                <button type="submit" class="bg-slate-700 hover:bg-slate-800 text-white font-bold px-5 py-2 rounded-xl text-xs">حفظ التغييرات</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# خروج #}
+<div id="logoutModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white dark:bg-[#1C2541] rounded-2xl max-w-sm w-full p-6 shadow-2xl text-right border border-slate-100 dark:border-[#3A506B]/30" dir="rtl">
+        <h3 class="text-lg font-bold text-gray-800 dark:text-white mb-2">تسجيل الخروج</h3>
+        <p class="text-sm text-gray-500 dark:text-slate-400 mb-6">هل أنت متأكد من رغبتك في الخروج من لوحة التحكم؟</p>
+        <div class="flex gap-2 justify-end">
+            <button type="button" onclick="closeModal('logoutModal')" class="bg-gray-100 dark:bg-[#0B1329] hover:bg-gray-200 px-4 py-2 rounded-lg text-sm font-bold text-gray-600 dark:text-slate-400">إلغاء</button>
+            <a href="/{{ slug }}/admin/logout" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold">نعم، خروج</a>
+        </div>
+    </div>
+</div>
+
+{# إشعار عام #}
+<div id="noticeModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[999] p-4">
+    <div class="bg-white dark:bg-[#1C2541] rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 dark:border-[#3A506B]/30 text-right" dir="rtl">
+        <div class="flex items-start gap-3 mb-5">
+            <div id="noticeIconWrap" class="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0"></div>
+            <div><p id="noticeTitle" class="text-sm font-bold text-slate-800 dark:text-white mb-1"></p>
+            <p id="noticeMsg" class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed"></p></div>
+        </div>
+        <button onclick="closeModal('noticeModal')" class="w-full bg-slate-700 hover:bg-slate-800 text-white py-2.5 rounded-xl text-xs font-bold">حسناً، فهمت</button>
+    </div>
+</div>
+
+{# تأكيد #}
+<div id="confirmModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[999] p-4">
+    <div class="bg-white dark:bg-[#1C2541] rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 dark:border-[#3A506B]/30 text-right" dir="rtl">
+        <div class="flex items-start gap-3 mb-5">
+            <div id="confirmIconWrap" class="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0"></div>
+            <div><p id="confirmTitle" class="text-sm font-bold text-slate-800 dark:text-white mb-1"></p>
+            <p id="confirmMsg" class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed"></p></div>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="closeModal('confirmModal')" class="flex-1 bg-slate-100 dark:bg-[#0B1329] hover:bg-slate-200 text-slate-600 dark:text-slate-400 py-2.5 rounded-xl text-xs font-bold">إلغاء</button>
+            <button id="confirmOkBtn" class="flex-1 text-white py-2.5 rounded-xl text-xs font-bold bg-red-500 hover:bg-red-600">تأكيد</button>
+        </div>
+    </div>
+</div>
+
+{# toast النسخ #}
+<div id="copyToast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[999] bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xl flex items-center gap-2">
+    <i class="fa-solid fa-check text-emerald-400"></i>
+    <span id="copyToastMsg">تم النسخ</span>
+</div>
+
+<script>
+// ══ helpers ══════════════════════════════════════════════════════════════════
+function openModal(id)  { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+// ══ نافذة تأكيد حذف فئة (بدل confirm() الافتراضي بالمتصفح) ══════════════════
+let _pendingDeleteFormId = null;
+function openDeleteCategoryModal(formId, label, price, avail) {
+    _pendingDeleteFormId = formId;
+    document.getElementById('deleteCategoryModalText').textContent =
+        `سيتم حذف ${avail} بطاقة غير مباعة من فئة (${label} — ${price}₪) نهائياً. البطاقات المباعة سابقاً وسجلاتها لن تتأثر. هذا الإجراء لا يمكن التراجع عنه.`;
+    openModal('deleteCategoryModal');
+}
+function closeDeleteCategoryModal() {
+    _pendingDeleteFormId = null;
+    closeModal('deleteCategoryModal');
+}
+function confirmDeleteCategory() {
+    if (_pendingDeleteFormId) document.getElementById(_pendingDeleteFormId).submit();
+}
+
+// ══ نافذة تعديل سعر فئة ═════════════════════════════════════════════════════
+let _editPriceOld = 0, _editPriceAvail = 0;
+function openEditPriceModal(btn) {
+    _editPriceOld   = parseFloat(btn.dataset.price);
+    _editPriceAvail = parseInt(btn.dataset.avail, 10) || 0;
+    document.getElementById('editPriceCat').textContent = `${btn.dataset.label} (${btn.dataset.profile}) — السعر الحالي ${_editPriceOld}₪`;
+    document.getElementById('editPriceOld').value     = btn.dataset.price;
+    document.getElementById('editPriceProfile').value = btn.dataset.profile;
+    document.getElementById('editPriceHours').value   = btn.dataset.hours;
+    document.getElementById('editPriceNew').value     = '';
+    updateEditPricePreview();
+    openModal('editPriceModal');
+    setTimeout(() => document.getElementById('editPriceNew').focus(), 50);
+}
+function updateEditPricePreview() {
+    const v = parseFloat(document.getElementById('editPriceNew').value);
+    const prev = document.getElementById('editPricePreview');
+    const btn  = document.getElementById('editPriceSubmit');
+    const valid = isFinite(v) && v >= 0.01 && v <= 1000 && Math.abs(v - _editPriceOld) >= 0.005;
+    btn.disabled = !valid;
+    if (!document.getElementById('editPriceNew').value) {
+        prev.textContent = 'اكتب السعر الجديد (مثلاً 1.5 أو 2).';
+    } else if (!valid) {
+        prev.textContent = (isFinite(v) && Math.abs(v - _editPriceOld) < 0.005)
+            ? 'نفس السعر الحالي — اكتب سعراً مختلفاً.' : 'السعر لازم يكون بين 0.01 و1000 شيكل.';
+    } else {
+        prev.textContent = `سيتم تغيير سعر ${_editPriceAvail} بطاقة متاحة من ${_editPriceOld}₪ إلى ${v}₪. البطاقات المباعة سابقاً وسجلاتها لن تتأثر.`;
+    }
+}
+
+// ══ Dark Mode ════════════════════════════════════════════════════════════════
+function toggleAdminTheme() {
+    const html = document.documentElement;
+    const icon = document.getElementById('themeIcon');
+    if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        localStorage.setItem('adminTheme', 'light');
+        if (icon) icon.className = 'fa-solid fa-moon';
+    } else {
+        html.classList.add('dark');
+        localStorage.setItem('adminTheme', 'dark');
+        if (icon) icon.className = 'fa-solid fa-sun';
+    }
+}
+document.addEventListener('DOMContentLoaded', () => {
+    const icon = document.getElementById('themeIcon');
+    if (icon) icon.className = document.documentElement.classList.contains('dark') ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+});
+
+// ══ وقت الجلسة — Heartbeat حقيقي من السيرفر ════════════════════════════════
+(function() {
+    var remaining = {{ session_remaining }};
+    var el = document.getElementById('sessionTimer');
+
+    function updateDisplay() {
+        if (remaining <= 0) return;
+        var m = Math.floor(remaining / 60);
+        var s = remaining % 60;
+        if (el) el.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    }
+
+    // عداد محلي كل ثانية (للعرض فقط)
+    var localTick = setInterval(function() {
+        remaining--;
+        if (remaining <= 0) {
+            clearInterval(localTick);
+            clearInterval(serverSync);
+            if (el) el.textContent = '00:00';
+            window.location.href = '/{{ slug }}/admin/login';
+            return;
+        }
+        updateDisplay();
+    }, 1000);
+
+    // مزامنة مع السيرفر كل 60 ثانية — تصحيح العرض بالوقت الحقيقي المتبقي
+    var serverSync = setInterval(function() {
+        fetch('/{{ slug }}/admin/session-ping', {method:'POST',
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:'_csrf_token={{ csrf_token }}'
+        }).then(r=>r.json()).then(d=>{
+            if (d.expired) {
+                clearInterval(localTick); clearInterval(serverSync);
+                window.location.href = '/{{ slug }}/admin/login';
+            } else {
+                remaining = d.remaining;
+            }
+        }).catch(()=>{});
+    }, 60000);
+
+    updateDisplay();
+})();
+
+// ══ جدول البطاقات — API-driven مع Pagination ════════════════════════════════
+var _tableState = { page: 1, status: '', q: '', total: 0, pages: 1 };
+var _debounceTimer = null;
+var _selectedIds = new Set();
+
+function loadVouchers(page) {
+    page = page || _tableState.page;
+    _tableState.page = page;
+    var params = new URLSearchParams({ page: page, status: _tableState.status, q: _tableState.q });
+    var tbody = document.getElementById('voucherTableBody');
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin ml-2"></i> جارٍ التحميل...</td></tr>';
+
+    fetch('/{{ slug }}/admin/vouchers-json?' + params)
+        .then(r => r.json())
+        .then(data => {
+            _tableState.total = data.total;
+            _tableState.pages = data.pages;
+            renderTable(data.rows, data.total);
+            renderPagination(data.page, data.pages, data.total);
+        })
+        .catch(() => {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-red-400 text-xs">فشل التحميل. تأكد من الاتصال.</td></tr>';
+        });
+}
+
+// حماية من XSS: تنظيف أي قيمة قبل إدراجها كـ innerHTML خام. حقل "البروفايل"
+function escapeHtml(value) {
+    var div = document.createElement('div');
+    div.textContent = (value === null || value === undefined) ? '' : String(value);
+    return div.innerHTML;
+}
+
+function renderTable(rows, total) {
+    var tbody = document.getElementById('voucherTableBody');
+    var info  = document.getElementById('tableInfo');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-10 text-slate-400 text-xs">لا توجد بطاقات مطابقة.</td></tr>';
+        info.classList.add('hidden');
+        return;
+    }
+    var isFiltered = _tableState.status || _tableState.q;
+    if (isFiltered) {
+        info.textContent = 'نتائج البحث: ' + total + ' بطاقة';
+        info.classList.remove('hidden');
+    } else {
+        info.classList.add('hidden');
+    }
+    var html = '';
+    rows.forEach(function(v) {
+        var statusCls = v.status === 'available' ? 'text-green-600' : 'text-red-500';
+        var checked   = _selectedIds.has(v.id) ? 'checked' : '';
+        var safeUsername = escapeHtml(v.username);
+        var safePassword = escapeHtml(v.password);
+        var safeProfile  = escapeHtml(v.profile);
+        var safeStatus   = escapeHtml(v.status);
+        html += '<tr class="border-b dark:border-[#3A506B]/20 hover:bg-gray-50 dark:hover:bg-[#3A506B]/10">' +
+            '<td class="p-3 text-center"><input type="checkbox" name="selected_vouchers" value="' + v.id + '" class="voucher-checkbox rounded text-red-500 cursor-pointer h-4 w-4" ' + checked + ' onchange="toggleCheck(this,' + v.id + ')"></td>' +
+            '<td class="p-3 dark:text-slate-400">' + v.seq + '</td>' +
+            '<td class="p-3 font-mono text-right">👤 <b class="dark:text-white">' + safeUsername + '</b><br>🔑 <span class="text-slate-500 dark:text-slate-400">' + safePassword + '</span></td>' +
+            '<td class="p-3 font-bold dark:text-slate-300">' + v.price + ' شيكل</td>' +
+            '<td class="p-3 dark:text-slate-400">' + safeProfile + '</td>' +
+            '<td class="p-3 dark:text-slate-400">' + (v.duration_hours ? (v.duration_hours == 720 ? 'شهري' : (v.duration_hours + ' س')) : '—') + '</td>' +
+            '<td class="p-3 font-bold ' + statusCls + '">' + safeStatus + '</td>' +
+            '<td class="p-3 text-center"><button type="button" onclick="confirmDeleteSingle(' + v.id + ')" class="text-red-500 hover:text-red-700 text-xs font-bold">❌ حذف</button></td>' +
+            '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function renderPagination(page, pages, total) {
+    var wrap  = document.getElementById('paginationWrap');
+    var info  = document.getElementById('pageInfo');
+    var btns  = document.getElementById('pageButtons');
+    if (pages <= 1) { wrap.classList.add('hidden'); return; }
+    wrap.classList.remove('hidden');
+    info.textContent = 'صفحة ' + page + ' من ' + pages + ' (' + total + ' بطاقة إجمالاً)';
+    var html = '';
+    var start = Math.max(1, page - 2);
+    var end   = Math.min(pages, page + 2);
+    if (page > 1) html += '<button onclick="loadVouchers(1)" class="pagBtn">«</button><button onclick="loadVouchers(' + (page-1) + ')" class="pagBtn">‹</button>';
+    for (var i = start; i <= end; i++) {
+        var active = i === page ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-[#1C2541] text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#3A506B]/30';
+        html += '<button onclick="loadVouchers(' + i + ')" class="pagBtn ' + active + '">' + i + '</button>';
+    }
+    if (page < pages) html += '<button onclick="loadVouchers(' + (page+1) + ')" class="pagBtn">›</button><button onclick="loadVouchers(' + pages + ')" class="pagBtn">»</button>';
+    btns.innerHTML = html;
+    // inject style once
+    if (!document.getElementById('pagStyle')) {
+        var s = document.createElement('style');
+        s.id = 'pagStyle';
+        s.textContent = '.pagBtn{padding:.3rem .6rem;border-radius:.5rem;font-size:.7rem;font-weight:700;border:1px solid #e2e8f0;transition:all .15s}';
+        document.head.appendChild(s);
+    }
+}
+
+function toggleCheck(cb, id) {
+    if (cb.checked) _selectedIds.add(id);
+    else            _selectedIds.delete(id);
+}
+
+function toggleSelectAll(master) {
+    document.querySelectorAll('.voucher-checkbox').forEach(cb => {
+        cb.checked = master.checked;
+        var id = parseInt(cb.value);
+        if (master.checked) _selectedIds.add(id);
+        else                _selectedIds.delete(id);
+    });
+}
+
+// الفلترة مع debounce 300ms
+document.getElementById('tableSearch').addEventListener('input', function() {
+    clearTimeout(_debounceTimer);
+    _debounceTimer = setTimeout(function() {
+        _tableState.q    = document.getElementById('tableSearch').value.trim();
+        _tableState.page = 1;
+        loadVouchers(1);
+    }, 300);
+});
+document.getElementById('statusFilter').addEventListener('change', function() {
+    _tableState.status = this.value;
+    _tableState.page   = 1;
+    loadVouchers(1);
+});
+function clearTableFilters() {
+    document.getElementById('tableSearch').value  = '';
+    document.getElementById('statusFilter').value = '';
+    _tableState.q = ''; _tableState.status = ''; _tableState.page = 1;
+    loadVouchers(1);
+}
+
+// تحميل أولي
+document.addEventListener('DOMContentLoaded', function() { loadVouchers(1); });
+
+// ══ حذف ══════════════════════════════════════════════════════════════════════
+const colorMap = {
+    red:    { bg:'bg-red-50',    text:'text-red-500',    btn:'bg-red-500 hover:bg-red-600' },
+    rose:   { bg:'bg-rose-50',   text:'text-rose-500',   btn:'bg-rose-500 hover:bg-rose-600' },
+    orange: { bg:'bg-orange-50', text:'text-orange-400', btn:'bg-orange-400 hover:bg-orange-500' },
+};
+function showNotice(emoji, title, msg, color) {
+    var c = colorMap[color]||colorMap.red;
+    document.getElementById('noticeIconWrap').className='w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0 '+c.bg;
+    document.getElementById('noticeIconWrap').textContent=emoji;
+    document.getElementById('noticeTitle').textContent=title;
+    document.getElementById('noticeMsg').textContent=msg;
+    openModal('noticeModal');
+}
+var _confirmCb = null;
+function showConfirm(title, msg, icon, color, cb) {
+    var c = colorMap[color]||colorMap.red;
+    document.getElementById('confirmIconWrap').className='w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0 '+c.bg+' '+c.text;
+    document.getElementById('confirmIconWrap').innerHTML='<i class="fa-solid '+icon+'"></i>';
+    document.getElementById('confirmTitle').textContent=title;
+    document.getElementById('confirmMsg').textContent=msg;
+    document.getElementById('confirmOkBtn').className='flex-1 text-white py-2.5 rounded-xl text-xs font-bold transition-all '+c.btn;
+    _confirmCb = cb;
+    openModal('confirmModal');
+}
+document.getElementById('confirmOkBtn').addEventListener('click', function() {
+    closeModal('confirmModal');
+    if (_confirmCb) _confirmCb(); _confirmCb = null;
+});
+
+function submitDeleteForm() {
+    var radio = document.querySelector('input[name="delete_type_radio"]:checked').value;
+    document.getElementById('finalDeleteType').value = radio;
+    if (radio === 'selected' && _selectedIds.size === 0) {
+        showNotice('⚠️', 'لم يتم تحديد أي بطاقات', 'يرجى تحديد بطاقة واحدة على الأقل من الجدول أولاً.', 'orange');
+        return;
+    }
+    // ننسخ IDs المحددة إلى الـ form
+    document.querySelectorAll('.hidden-selected').forEach(e=>e.remove());
+    _selectedIds.forEach(function(id) {
+        var inp = document.createElement('input');
+        inp.type='hidden'; inp.name='selected_vouchers'; inp.value=id;
+        inp.className='hidden-selected';
+        document.getElementById('deleteForm').appendChild(inp);
+    });
+    closeModal('deleteModal');
+    var title='تأكيد الحذف', msg="هل أنت متأكد من رغبتك في حذف الكروت المحددة؟", icon='fa-trash-can', color='red';
+    if (radio==='sold')  msg=" سيتم حذف كافة الكروت المباعة بشكل نهائي ولا يمكن التراجع.";
+    if (radio==='all') { title='⚠️ تحذير: تصفير شامل'; msg="أنت على وشك مسح جميع البيانات! لا يمكن التراجع."; icon='fa-triangle-exclamation'; color='rose'; }
+    showConfirm(title, msg, icon, color, ()=>document.getElementById('deleteForm').submit());
+}
+
+function confirmDeleteSingle(id) {
+    showConfirm('حذف البطاقة', 'هل أنت متأكد من حذف هذه البطاقة؟ لا يمكن التراجع.','fa-trash-can','red', function() {
+        var f=document.createElement('form'); f.method='POST'; f.action='/{{ slug }}/admin/delete-single';
+        var csrf=document.createElement('input'); csrf.type='hidden'; csrf.name='_csrf_token'; csrf.value='{{ csrf_token }}';
+        var inp=document.createElement('input'); inp.type='hidden'; inp.name='card_id'; inp.value=id;
+        f.appendChild(csrf); f.appendChild(inp); document.body.appendChild(f); f.submit();
+    });
+}
+
+function confirmClearAuditLog() {
+    showConfirm('مسح سجل النشاط', 'هل أنت متأكد من مسح جميع سجلات النشاط؟ لا يمكن التراجع.', 'fa-trash-can', 'red', function() {
+        var f=document.createElement('form'); f.method='POST'; f.action='/{{ slug }}/admin/audit-log/clear';
+        var csrf=document.createElement('input'); csrf.type='hidden'; csrf.name='_csrf_token'; csrf.value='{{ csrf_token }}';
+        f.appendChild(csrf); document.body.appendChild(f); f.submit();
+    });
+}
+
+// ══ نسخ النص ════════════════════════════════════════════════════════════════
+var _cpTimer=null;
+function copyText(text, btn, label) {
+    navigator.clipboard.writeText(text).then(()=>{
+        var t=document.getElementById('copyToast');
+        document.getElementById('copyToastMsg').textContent='تم نسخ '+(label||'');
+        t.classList.remove('hidden');
+        clearTimeout(_cpTimer);
+        _cpTimer=setTimeout(()=>t.classList.add('hidden'),2000);
+    });
+}
+
+
+</script>
+</body>
+</html>

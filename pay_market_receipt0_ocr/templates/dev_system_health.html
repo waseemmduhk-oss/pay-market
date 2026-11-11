@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>صحة النظام — لوحة المطوّر</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+        body { font-family:'Cairo',sans-serif; background:#0B1329; color:#e2e8f0; }
+        .card { background:#151F38; border:1px solid #253254; border-radius:1rem; }
+    </style>
+</head>
+<body class="min-h-screen">
+<div class="max-w-4xl mx-auto p-4 sm:p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-[#253254]">
+        <h1 class="text-xl font-extrabold text-white flex items-center gap-2"><i class="fa-solid fa-heart-pulse text-emerald-400"></i> صحة النظام</h1>
+        <a href="/dev/dashboard" class="bg-[#1C2541] hover:bg-[#253254] text-slate-300 px-4 py-2 rounded-lg text-xs font-bold border border-[#253254]"><i class="fa-solid fa-arrow-right"></i> رجوع</a>
+    </div>
+
+    {% if using_default_password %}
+    <div id="defaultPwWarning" class="card border-amber-800 p-4 mb-4 flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-950/40 text-amber-400 flex items-center justify-center shrink-0"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <div class="text-xs text-amber-300 flex-1">
+            لسه على كلمة مرور الدخول الافتراضية.
+            غيّرها من لوحة المطوّر ⚙️ فوراً.
+        </div>
+        <button onclick="dismissDefaultPwWarning()" class="text-slate-500 hover:text-slate-300 text-lg leading-none shrink-0">×</button>
+    </div>
+    <script>
+    if (sessionStorage.getItem('defaultPwWarningDismissed') === '1') {
+        document.getElementById('defaultPwWarning').style.display = 'none';
+    }
+    function dismissDefaultPwWarning() {
+        sessionStorage.setItem('defaultPwWarningDismissed', '1');
+        document.getElementById('defaultPwWarning').style.display = 'none';
+    }
+    </script>
+    {% endif %}
+
+    {% if days_since_backup is none %}
+    <div class="card border-red-800 p-4 mb-4 flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-red-950/40 text-red-400 flex items-center justify-center shrink-0"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <div class="text-xs text-red-300">لا توجد أي نسخة احتياطية محفوظة على الإطلاق! يُفضّل إنشاء نسخة الآن من <a href="/dev/backups" class="underline font-bold">صفحة النسخ الاحتياطي</a>.</div>
+    </div>
+    {% elif days_since_backup > 7 %}
+    <div class="card border-amber-800 p-4 mb-4 flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-950/40 text-amber-400 flex items-center justify-center shrink-0"><i class="fa-solid fa-clock"></i></div>
+        <div class="text-xs text-amber-300">آخر نسخة احتياطية كانت قبل {{ days_since_backup }} يوم. يُفضّل أخذ نسخة جديدة من <a href="/dev/backups" class="underline font-bold">صفحة النسخ الاحتياطي</a>.</div>
+    </div>
+    {% endif %}
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+        <div class="card p-4"><p class="text-[11px] text-slate-500 font-bold mb-1">حجم قاعدة البيانات</p><p class="text-xl font-extrabold text-white">{{ db_size_mb }} MB</p></div>
+        <div class="card p-4"><p class="text-[11px] text-slate-500 font-bold mb-1">المشغّلون (مفعّل/معطّل)</p><p class="text-xl font-extrabold text-white">{{ operators_active }} / {{ operators_inactive }}</p></div>
+        <div class="card p-4"><p class="text-[11px] text-slate-500 font-bold mb-1">إجمالي البطاقات</p><p class="text-xl font-extrabold text-indigo-400">{{ total_vouchers }}</p></div>
+        <div class="card p-4"><p class="text-[11px] text-slate-500 font-bold mb-1">إجمالي العمليات</p><p class="text-xl font-extrabold text-indigo-400">{{ total_transactions }}</p></div>
+        <div class="card p-4"><p class="text-[11px] text-slate-500 font-bold mb-1">سجلات النشاط</p><p class="text-xl font-extrabold text-slate-300">{{ total_audit_rows }}</p></div>
+        <div class="card p-4"><p class="text-[11px] text-slate-500 font-bold mb-1">دخول فاشل (24 ساعة)</p><p class="text-xl font-extrabold {{ 'text-red-400' if failed_logins_24h > 0 else 'text-emerald-400' }}">{{ failed_logins_24h }}</p></div>
+    </div>
+
+    <div class="card p-5 mb-4">
+        <h3 class="text-sm font-bold text-white mb-3"><i class="fa-solid fa-hard-drive text-slate-400"></i> مساحة القرص</h3>
+        <div class="w-full bg-[#0B1329] rounded-full h-3 overflow-hidden mb-2">
+            <div class="h-full {{ 'bg-red-500' if disk_used_pct > 90 else ('bg-amber-500' if disk_used_pct > 75 else 'bg-emerald-500') }}" style="width:{{ disk_used_pct }}%"></div>
+        </div>
+        <p class="text-[11px] text-slate-400">مستخدَم {{ disk_used_pct }}% — متاح {{ disk_free_gb }} GB من {{ disk_total_gb }} GB</p>
+    </div>
+
+    <div class="card p-5 mb-4">
+        <h3 class="text-sm font-bold text-white mb-3"><i class="fa-solid fa-database text-teal-400"></i> النسخ الاحتياطي</h3>
+        <div class="grid grid-cols-3 gap-3 text-center">
+            <div><p class="text-[11px] text-slate-500">العدد</p><p class="font-extrabold text-white">{{ backups_count }}</p></div>
+            <div><p class="text-[11px] text-slate-500">الحجم الكلي</p><p class="font-extrabold text-white">{{ backups_size_mb }} MB</p></div>
+            <div><p class="text-[11px] text-slate-500">آخر نسخة</p><p class="font-extrabold text-white">{{ days_since_backup ~ ' يوم' if days_since_backup is not none else '—' }}</p></div>
+        </div>
+    </div>
+
+    <div class="card p-5">
+        <h3 class="text-sm font-bold text-white mb-3"><i class="fa-solid fa-server text-slate-400"></i> معلومات البيئة</h3>
+        <div class="grid grid-cols-2 gap-2 text-[11px]">
+            <div class="text-slate-500">Python:</div><div class="text-slate-300 font-mono">{{ python_version }}</div>
+            <div class="text-slate-500">Flask:</div><div class="text-slate-300 font-mono">{{ flask_version }}</div>
+            <div class="text-slate-500">SQLite:</div><div class="text-slate-300 font-mono">{{ sqlite_version }}</div>
+            <div class="text-slate-500">النظام:</div><div class="text-slate-300 font-mono text-[10px]">{{ platform_info }}</div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>النسخ الاحتياطي — لوحة المطوّر</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+        body { font-family:'Cairo',sans-serif; background:#0B1329; color:#e2e8f0; }
+        .card { background:#151F38; border:1px solid #253254; border-radius:1rem; }
+    </style>
+</head>
+<body class="min-h-screen">
+
+{% if op_message %}
+<div id="opToast" class="fixed top-5 left-1/2 -translate-x-1/2 z-[999] w-full max-w-sm px-4">
+    <div class="card border-{{ 'emerald-800' if op_message[0]=='success' else 'red-800' }} shadow-2xl p-4 flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl {{ 'bg-emerald-950/40 text-emerald-400' if op_message[0]=='success' else 'bg-red-950/40 text-red-400' }} flex items-center justify-center shrink-0 text-lg">
+            <i class="fa-solid {{ 'fa-circle-check' if op_message[0]=='success' else 'fa-triangle-exclamation' }}"></i>
+        </div>
+        <div class="flex-1">
+            <p class="text-sm font-bold text-white">{{ 'تم بنجاح' if op_message[0]=='success' else 'حدث خطأ' }}</p>
+            <p class="text-xs text-slate-400 mt-0.5">{{ op_message[1] }}</p>
+        </div>
+        <button onclick="document.getElementById('opToast').remove()" class="text-slate-500 hover:text-slate-300 text-lg leading-none">×</button>
+    </div>
+</div>
+<script>setTimeout(()=>document.getElementById('opToast')?.remove(),6000);</script>
+{% endif %}
+
+<div class="max-w-3xl mx-auto p-4 sm:p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-[#253254]">
+        <h1 class="text-xl font-extrabold text-white flex items-center gap-2"><i class="fa-solid fa-database text-teal-400"></i> النسخ الاحتياطي (قاعدة البيانات كاملة)</h1>
+        <a href="/dev/dashboard" class="bg-[#1C2541] hover:bg-[#253254] text-slate-300 px-4 py-2 rounded-lg text-xs font-bold border border-[#253254]"><i class="fa-solid fa-arrow-right"></i> رجوع</a>
+    </div>
+
+    <div class="card p-3 mb-4 text-[11px] text-amber-300/90 bg-amber-950/10 border-amber-900/30">
+        <i class="fa-solid fa-circle-info"></i> النسخة الاحتياطية تشمل بيانات <b>كل المشغّلين معاً</b> — لهذا هذه الصفحة متاحة لحساب المطوّر فقط.
+    </div>
+
+    <div class="card p-6 mb-4">
+        <form method="POST" action="/dev/backup">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-floppy-disk"></i> إنشاء نسخة احتياطية الآن
+            </button>
+        </form>
+    </div>
+
+    <div class="card p-6 mb-4">
+        <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-bold text-slate-400">النسخ المحفوظة على السيرفر:</span>
+            <button onclick="loadBackupList()" class="text-xs text-indigo-400 hover:underline font-bold"><i class="fa-solid fa-arrows-rotate"></i> تحديث</button>
+        </div>
+        <div id="backupListWrap" class="overflow-auto rounded-xl border border-[#253254] bg-[#0B1329] min-h-[60px] max-h-72 flex items-center justify-center">
+            <p class="text-xs text-slate-500 py-4">اضغط "تحديث" لعرض النسخ.</p>
+        </div>
+    </div>
+
+    <div class="card p-6">
+        <p class="text-xs font-bold text-slate-400 mb-2"><i class="fa-solid fa-upload text-indigo-400 ml-1"></i> رفع نسخة احتياطية من الجهاز:</p>
+        <form method="POST" action="/dev/backup/upload" enctype="multipart/form-data">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <div class="flex gap-2">
+                <label class="flex-1 cursor-pointer">
+                    <input type="file" name="backup_file" accept=".db" required class="hidden" id="backupUploadInput" onchange="document.getElementById('backupUploadName').textContent=this.files[0]?.name||'اختر ملف .db'">
+                    <div class="w-full border-2 border-dashed border-[#253254] rounded-xl py-2.5 px-3 text-xs text-slate-500 hover:border-indigo-500 hover:text-indigo-400 transition-all text-center">
+                        <i class="fa-solid fa-file-arrow-up ml-1"></i><span id="backupUploadName">اختر ملف .db</span>
+                    </div>
+                </label>
+                <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 rounded-xl text-xs">رفع</button>
+            </div>
+        </form>
+        <div class="mt-3 p-3 bg-amber-950/20 border border-amber-900/30 rounded-xl text-[11px] text-amber-400">
+            <i class="fa-solid fa-triangle-exclamation"></i> الاسترجاع سيستبدل قاعدة البيانات الحالية بالكامل (كل المشغّلين). نسخة تلقائية من الحالة الحالية تُحفظ قبل أي استبدال.
+        </div>
+    </div>
+</div>
+
+{# مودال تأكيد الاسترجاع #}
+<div id="restoreConfirmModal" class="hidden fixed inset-0 bg-[#0B1329]/85 backdrop-blur-sm flex items-center justify-center z-[999] p-4">
+    <div class="card max-w-sm w-full p-6 shadow-2xl border-amber-900/50 text-right" dir="rtl">
+        <div class="flex items-center gap-2 text-amber-400 mb-3">
+            <i class="fa-solid fa-triangle-exclamation text-xl"></i><h3 class="text-md font-bold">تأكيد الاسترجاع</h3>
+        </div>
+        <p class="text-xs text-slate-400 mb-2">سيتم استبدال قاعدة البيانات الحالية (كل المشغّلين) بـ:</p>
+        <p id="restoreFileName" class="font-mono text-sm font-bold text-slate-200 bg-[#0B1329] p-2 rounded-lg mb-4 text-center"></p>
+        <form id="restoreForm" method="POST" action="/dev/backup/restore">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="filename" id="restoreFileInput">
+            <div class="flex gap-2">
+                <button type="button" onclick="document.getElementById('restoreConfirmModal').classList.add('hidden')" class="flex-1 bg-[#0B1329] text-slate-400 font-bold py-2.5 rounded-xl text-xs">إلغاء</button>
+                <button type="submit" class="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2.5 rounded-xl text-xs">↩ استرجع الآن</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# مودال تأكيد حذف نسخة احتياطية #}
+<div id="deleteBackupConfirmModal" class="hidden fixed inset-0 bg-[#0B1329]/85 backdrop-blur-sm flex items-center justify-center z-[999] p-4">
+    <div class="card max-w-sm w-full p-6 shadow-2xl border-red-900/50 text-right" dir="rtl">
+        <div class="flex items-center gap-2 text-red-400 mb-3">
+            <i class="fa-solid fa-trash-can text-lg"></i><h3 class="text-md font-bold">تأكيد الحذف</h3>
+        </div>
+        <p class="text-xs text-slate-400 mb-2">سيتم حذف النسخة الاحتياطية التالية نهائياً:</p>
+        <p id="deleteBackupFileName" class="font-mono text-sm font-bold text-slate-200 bg-[#0B1329] p-2 rounded-lg mb-4 text-center"></p>
+        <form id="deleteBackupForm" method="POST" action="/dev/backup/delete">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="filename" id="deleteBackupFileInput">
+            <div class="flex gap-2">
+                <button type="button" onclick="document.getElementById('deleteBackupConfirmModal').classList.add('hidden')" class="flex-1 bg-[#0B1329] text-slate-400 font-bold py-2.5 rounded-xl text-xs">إلغاء</button>
+                <button type="submit" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 rounded-xl text-xs">🗑 حذف نهائي</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+async function loadBackupList() {
+    var wrap = document.getElementById('backupListWrap');
+    wrap.innerHTML = '<p class="text-xs text-slate-500 py-4 text-center">جارٍ التحميل...</p>';
+    try {
+        var r = await fetch('/dev/backup/list');
+        wrap.innerHTML = await r.text();
+    } catch(e) {
+        wrap.innerHTML = '<p class="text-xs text-red-400 py-4 text-center">فشل التحميل.</p>';
+    }
+}
+function restoreBackup(filename) {
+    document.getElementById('restoreFileName').textContent = filename;
+    document.getElementById('restoreFileInput').value = filename;
+    document.getElementById('restoreConfirmModal').classList.remove('hidden');
+}
+function deleteBackup(filename) {
+    document.getElementById('deleteBackupFileName').textContent = filename;
+    document.getElementById('deleteBackupFileInput').value = filename;
+    document.getElementById('deleteBackupConfirmModal').classList.remove('hidden');
+}
+loadBackupList();
+</script>
+</body>
+</html>
