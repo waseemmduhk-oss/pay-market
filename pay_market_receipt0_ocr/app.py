@@ -143,34 +143,37 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
 # إنشاء الجداول بطريقة آمنة ومستقلة عند الإقلاع
-try:
-    conn = sqlite3.connect('hotspot_cards.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS rate_limits (
-            key TEXT PRIMARY KEY,
-            count INTEGER,
-            window_start REAL,
-            locked_until REAL
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS dev_admins (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL
-        )
-    ''')
-    conn.commit()
-    conn.close()
-except Exception as e:
-    print("Database init error:", e)
+def init_sqlite_db():
+    """دالة لإنشاء الجداول تلقائياً إذا لم تكن موجودة"""
+    try:
+        conn = sqlite3.connect('hotspot_cards.db')
+        cursor = conn.cursor()
+        
+        # إنشاء جدول rate_limits
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS rate_limits (
+                key TEXT PRIMARY KEY,
+                count INTEGER,
+                window_start REAL,
+                locked_until REAL
+            )
+        ''')
+        
+        # إنشاء جدول dev_admins
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS dev_admins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL
+            )
+        ''')
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print("Database init error:", e)
 
-# استدعاء الدالة عند تشغيل التطبيق
-with app.app_context():
-    init_sqlite_db()
+# استدعاء الدالة عند بدء تشغيل الملف
+init_sqlite_db()
     
     # جدول البطاقات
     cursor.execute('''
