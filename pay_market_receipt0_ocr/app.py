@@ -143,10 +143,11 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
 def init_sqlite_db():
+    """دالة لإنشاء الجداول تلقائياً بأمان تام عند الإقلاع"""
     try:
         conn = sqlite3.connect('hotspot_cards.db')
         cursor = conn.cursor()
-
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS rate_limits (
                 key TEXT PRIMARY KEY,
@@ -155,7 +156,7 @@ def init_sqlite_db():
                 locked_until REAL
             )
         ''')
-
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS dev_admins (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
