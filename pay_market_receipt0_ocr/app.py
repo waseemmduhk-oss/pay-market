@@ -143,20 +143,23 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
-# إنشاء الجداول وإضافة حساب المسؤول الافتراضي تلقائياً
+# إنشاء الجداول وإضافة الحساب الافتراضي عند الإقلاع
 try:
     conn = sqlite3.connect('hotspot_cards.db')
     cursor = conn.cursor()
     
-    # 1. إنشاء الجداول
+    # 1. إنشاء جدول rate_limits
     cursor.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
+    
+    # 2. إنشاء جدول dev_admins
     cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
     
-    # 2. إضافة حساب مسؤول افتراضي (مثلاً: المستخدم admin وكلمة المرور admin123)
-    # يمكنك تغيير "admin" و "admin123" حسب رغبتك
-    default_username = "dev"
-    default_password = generate_password_hash("ChangeMe#2026")
+    # 3. إنشاء جدول operators (المسؤول عن المشغلين)
+    cursor.execute("CREATE TABLE IF NOT EXISTS operators (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, username TEXT, balance REAL)")
     
+    # 4. إضافة حساب المسؤول الافتراضي (admin / admin123)
+    default_username = "admin"
+    default_password = generate_password_hash("admin123")
     cursor.execute(
         "INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, ?, ?)",
         (default_username, default_password)
@@ -164,7 +167,7 @@ try:
     
     conn.commit()
     conn.close()
-    print("Database and default admin initialized successfully.")
+    print("Database and tables initialized successfully.")
 except Exception as e:
     print("DB Init Error:", e)
     
