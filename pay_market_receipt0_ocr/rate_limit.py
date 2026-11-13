@@ -1,11 +1,23 @@
 import time
 
+def init_db(conn):
+    """إنشاء جدول rate_limits تلقائياً إذا لم يكن موجوداً لمنع أخطاء قاعدة البيانات."""
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS rate_limits (
+            key TEXT PRIMARY KEY,
+            count INTEGER,
+            window_start REAL,
+            locked_until REAL
+        )
+    ''')
+    conn.commit()
+
 
 def check_and_hit(conn, key, max_attempts, lockout_duration):
     """
-    قراءة الحالة الحالية لمفتاح معيّن (بدون زيادة العدّاد) — تُستخدم لعرض
-    حالة القفل عند تحميل صفحة الدخول (GET) قبل أي محاولة جديدة.
+    قراءة الحالة الحالية لمفتاح معيّن (بدون زيادة العدّاد).
     """
+    init_db(conn)
     now = time.time()
     row = conn.execute('SELECT count, locked_until FROM rate_limits WHERE key=?', (key,)).fetchone()
     count        = row['count'] if row else 0
@@ -21,6 +33,7 @@ def check_and_hit(conn, key, max_attempts, lockout_duration):
 
 def register_failure(conn, key, max_attempts, lockout_duration):
     """يسجّل محاولة فاشلة، ويجمّد المفتاح مؤقتاً لو تجاوز الحد المسموح."""
+    init_db(conn)
     now = time.time()
     row = conn.execute('SELECT count, locked_until FROM rate_limits WHERE key=?', (key,)).fetchone()
     count        = (row['count'] if row else 0) + 1
@@ -41,13 +54,15 @@ def register_failure(conn, key, max_attempts, lockout_duration):
 
 
 def reset(conn, key):
-    """يمسح عدّاد مفتاح معيّن (يُستدعى عادة بعد نجاح تسجيل الدخول/التحقق)."""
+    """يمسح عدّاد مفتاح معيّن."""
+    init_db(conn)
     conn.execute('DELETE FROM rate_limits WHERE key=?', (key,))
     conn.commit()
 
 
 def check_locked(conn, key):
-    """فحص سريع للقفل فقط (بدون تفاصيل العدّاد) — يرجّع (locked, remaining_seconds)."""
+    """فحص سريع للقفل فقط."""
+    init_db(conn)
     now = time.time()
     row = conn.execute('SELECT locked_until FROM rate_limits WHERE key=?', (key,)).fetchone()
     locked_until = row['locked_until'] if row else 0
@@ -56,9 +71,9 @@ def check_locked(conn, key):
 
 def hit_sliding_window(conn, key, limit, window_seconds):
     """
-    عدّاد نافذة منزلقة بسيطة (لتحديد عدد الطلبات خلال مدة زمنية، كطلبات
-    الشراء). يزيد العدّاد ويرجّع True لو تجاوز الحد المسموح خلال النافذة.
+    عدّاد نافذة منزلقة بسيطة.
     """
+    init_db(conn)
     now = time.time()
     row = conn.execute('SELECT count, window_start FROM rate_limits WHERE key=?', (key,)).fetchone()
     if row and (now - row['window_start']) <= window_seconds:
