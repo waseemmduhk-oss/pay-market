@@ -143,10 +143,11 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
 # فتح الاتصال وإنشاء المؤشر والجداول بشكل صحيح وآمن
-with sqlite3.connect('hotspot_cards.db') as conn:
+# إنشاء الجداول بطريقة آمنة ومستقلة عند الإقلاع
+try:
+    conn = sqlite3.connect('hotspot_cards.db')
     cursor = conn.cursor()
     
-    # إنشاء جدول rate_limits
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS rate_limits (
             key TEXT PRIMARY KEY,
@@ -156,7 +157,6 @@ with sqlite3.connect('hotspot_cards.db') as conn:
         )
     ''')
     
-    # إنشاء جدول dev_admins
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS dev_admins (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -166,6 +166,8 @@ with sqlite3.connect('hotspot_cards.db') as conn:
     ''')
     conn.commit()
     conn.close()
+except Exception as e:
+    print("Database init error:", e)
 
 # استدعاء الدالة عند تشغيل التطبيق
 with app.app_context():
