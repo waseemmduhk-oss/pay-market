@@ -148,16 +148,24 @@ try:
     conn = sqlite3.connect('hotspot_cards.db')
     cursor = conn.cursor()
     
-    # 1. جدول rate_limits (حماية الطلبات)
+    # 1. جدول rate_limits
     cursor.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
     
-    # 2. جدول dev_admins (المسؤولين)
+    # 2. جدول dev_admins
     cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
     
-    # 3. جدول operators (المشغلين)
-    cursor.execute("CREATE TABLE IF NOT EXISTS operators (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, username TEXT, balance REAL)")
+    # 3. جدول operators مع إضافة عمود lifetime_revenue والأعمدة المطلوبة
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS operators (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            name TEXT, 
+            username TEXT, 
+            balance REAL,
+            lifetime_revenue REAL DEFAULT 0
+        )
+    """)
     
-    # 4. جدول vouchers (الكروت و البطاقات - الأساسي للوحة التحكم)
+    # 4. جدول vouchers
     cursor.execute("CREATE TABLE IF NOT EXISTS vouchers (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, price REAL, status TEXT)")
     
     # إضافة حساب المسؤول الافتراضي (admin / admin123)
@@ -170,7 +178,7 @@ try:
     
     conn.commit()
     conn.close()
-    print("Database and all tables initialized successfully.")
+    print("Database and all tables/columns initialized successfully.")
 except Exception as e:
     print("DB Init Error:", e)
     
