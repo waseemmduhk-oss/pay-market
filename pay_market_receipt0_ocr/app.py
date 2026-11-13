@@ -142,9 +142,8 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
-def init_sqlite_db():
-    """إنشاء الجداول تلقائياً في قاعدة البيانات المحلية عند بدء التشغيل لمنع أخطاء الجداول المفقودة"""
-    conn = sqlite3.connect('hotspot_cards.db')
+# فتح الاتصال وإنشاء المؤشر والجداول بشكل صحيح وآمن
+with sqlite3.connect('hotspot_cards.db') as conn:
     cursor = conn.cursor()
     
     # إنشاء جدول rate_limits
@@ -165,7 +164,6 @@ def init_sqlite_db():
             password_hash TEXT NOT NULL
         )
     ''')
-    
     conn.commit()
     conn.close()
 
