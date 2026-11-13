@@ -142,7 +142,6 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
-# فتح الاتصال وإنشاء المؤشر والجداول بشكل صحيح وآمن
 # إنشاء الجداول بطريقة آمنة ومستقلة عند الإقلاع
 try:
     conn = sqlite3.connect('hotspot_cards.db')
