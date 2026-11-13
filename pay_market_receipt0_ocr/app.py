@@ -142,23 +142,18 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
-def init_sqlite_db():
-    try:
-        conn = sqlite3.connect('hotspot_cards.db')
-        cursor = conn.cursor()
-        
-        # إنشاء جدول rate_limits بأسطر مفردة لتجنب أي مشاكل في المسافات
-        cursor.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
-        
-        # إنشاء جدول dev_admins بأسطر مفردة
-        cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
-        
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print("Database init error:", e)
+    import sqlite3
 
-init_sqlite_db()
+# إنشاء الجداول مباشرة عند الإقلاع بدون دوال أو مسافات معقدة
+try:
+    conn = sqlite3.connect('hotspot_cards.db')
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
+    conn.commit()
+    conn.close()
+except Exception as e:
+    print("DB Init Error:", e)
     
     # جدول البطاقات
     cursor.execute('''
