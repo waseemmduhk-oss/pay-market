@@ -62,7 +62,13 @@ app.session_interface = ScopedSessionInterface()
 #حد حجم الملفات المرفوعة (5MB كحد أقصى)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024    # 5 ميغابايت
 
-DATABASE = 'hotspot_cards.db'
+# قراءة رابط قاعدة البيانات السحابية من Render، والرجوع للمحلية عند العمل على حاسوبك
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# إذا لم يتوفر رابط سحابي، استخدم SQLite المحلي
+DATABASE = DATABASE_URL if DATABASE_URL else 'hotspot_cards.db'
 
 #CSRF PROTECTION — توليد وفحص التوكن# ── CSRF ────────────────────────────────────────────────────────────────────
 def generate_csrf_token():
