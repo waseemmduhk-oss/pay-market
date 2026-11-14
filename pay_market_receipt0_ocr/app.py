@@ -152,7 +152,7 @@ try:
         c.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
         c.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
         
-        # جدول المشغلين مع إضافة عمود hotspot_title وكافة الأعمدة المطلوبة
+        # جدول المشغلين مع كافة الأعمدة المطلوبة
         c.execute("""
             CREATE TABLE IF NOT EXISTS operators (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -164,12 +164,14 @@ try:
                 is_active INTEGER DEFAULT 1,
                 jawwal_pay_number TEXT,
                 support_phone TEXT,
-                hotspot_title TEXT
+                hotspot_title TEXT,
+                hotspot_login_url TEXT,
+                logo_size TEXT
             )
         """)
         
-        # التأكد من إضافة الأعمدة لو كان الجدول منشأ مسبقاً
-        for col in ["jawwal_pay_number", "support_phone", "hotspot_title", "slug", "is_active", "lifetime_revenue"]:
+        # التأكد من إضافة أي عمود ناقص لو كان الجدول منشأ مسبقاً
+        for col in ["jawwal_pay_number", "support_phone", "hotspot_title", "hotspot_login_url", "logo_size", "slug", "is_active", "lifetime_revenue"]:
             try:
                 c.execute(f"ALTER TABLE operators ADD COLUMN {col} TEXT")
             except Exception:
@@ -185,7 +187,7 @@ try:
         conn.commit()
         conn.close()
 
-    print("Database and hotspot_title column initialized successfully.")
+    print("All operator columns (hotspot_login_url, logo_size, etc.) initialized successfully.")
 except Exception as e:
     print("DB Init Error:", e)
     
