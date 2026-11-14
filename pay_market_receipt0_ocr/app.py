@@ -143,31 +143,21 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
-def init_full_database():
-    try:
-        conn = sqlite3.connect('hotspot_cards.db')
-        cursor = conn.cursor()
-        
-        # إنشاء كافة الجداول بأسطر مفردة لتجنب أي مشاكل في المسافات البادئة نهائياً
-        cursor.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS operators (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, username TEXT, slug TEXT, balance REAL, lifetime_revenue REAL DEFAULT 0, is_active INTEGER DEFAULT 1)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS vouchers (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, price REAL, status TEXT)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS revenue_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, amount REAL, occurred_at TEXT, created_at TEXT, date TEXT)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, action TEXT, details TEXT, created_at TEXT)")
-        
-        # إضافة حساب المسؤول الافتراضي
-        default_username = "admin"
-        default_password = generate_password_hash("admin123")
-        cursor.execute("INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, ?, ?)", (default_username, default_password))
-        
-        conn.commit()
-        conn.close()
-        print("Database initialized cleanly without indentation issues.")
-    except Exception as e:
-        print("DB Init Error:", e)
-
-init_full_database()
+try:
+    conn = sqlite3.connect('hotspot_cards.db')
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS operators (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, username TEXT, slug TEXT, balance REAL, lifetime_revenue REAL DEFAULT 0, is_active INTEGER DEFAULT 1)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS vouchers (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, price REAL, status TEXT)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS revenue_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, amount REAL, occurred_at TEXT, created_at TEXT, date TEXT)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, action TEXT, details TEXT, created_at TEXT)")
+    cursor.execute("INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, 'admin', ?)", (generate_password_hash("admin123"),))
+    conn.commit()
+    conn.close()
+    print("DB initialized successfully.")
+except Exception as e:
+    print("DB Error:", e)
     
     # جدول البطاقات
     cursor.execute('''
