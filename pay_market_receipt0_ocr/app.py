@@ -146,16 +146,48 @@ def init_db_auto():
 try:
     conn = sqlite3.connect('hotspot_cards.db')
     cursor = conn.cursor()
+    
+    # 1. الجداول الأساسية
     cursor.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
     cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
+    
+    # 2. جدول المشغلين (مع إضافة الأعمدة الكاملة)
     cursor.execute("CREATE TABLE IF NOT EXISTS operators (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, username TEXT, slug TEXT, balance REAL, lifetime_revenue REAL DEFAULT 0, is_active INTEGER DEFAULT 1)")
+    
+    # 3. البطاقات والتقارير والسجلات
     cursor.execute("CREATE TABLE IF NOT EXISTS vouchers (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, price REAL, status TEXT)")
     cursor.execute("CREATE TABLE IF NOT EXISTS revenue_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, amount REAL, occurred_at TEXT, created_at TEXT, date TEXT)")
-    cursor.execute("CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, action TEXT, details TEXT, created_at TEXT)")
+    
+    # 4. سجلات التدقيق والأمان (مع إضافة عمود ip_address و event_time)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator_id INTEGER,
+            action TEXT,
+            details TEXT,
+            ip_address TEXT,
+            event_time TEXT,
+            created_at TEXT
+        )
+    """)
+    
+    # 5. جدول المعاملات (transactions) لصحة النظام
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator_id INTEGER,
+            amount REAL,
+            status TEXT,
+            created_at TEXT
+        )
+    """)
+    
+    # حساب المسؤول الافتراضي
     cursor.execute("INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, 'admin', ?)", (generate_password_hash("admin123"),))
+    
     conn.commit()
     conn.close()
-    print("DB initialized successfully.")
+    print("All final database tables and columns initialized successfully.")
 except Exception as e:
     print("DB Error:", e)
     
