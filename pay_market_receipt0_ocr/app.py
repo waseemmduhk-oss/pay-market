@@ -144,7 +144,7 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
 def init_full_database():
-    """تهيئة قاعدة البيانات بالكامل وإنشاء كافة الجداول والأعمدة المطلوبة لضمان عدم ظهور أخطاء نقص الجداول"""
+    """تهيئة قاعدة البيانات بالكامل لضمان توفر كافة الجداول والأعمدة لمنع أي أخطاء على Render"""
     try:
         conn = sqlite3.connect('hotspot_cards.db')
         cursor = conn.cursor()
@@ -168,14 +168,16 @@ def init_full_database():
             )
         """)
         
-        # 3. جدول المشغلين مع كافة الأعمدة اللازمة
+        # 3. جدول المشغلين (مع عمود is_active و slug وكافة المتطلبات)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS operators (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 name TEXT, 
                 username TEXT, 
+                slug TEXT,
                 balance REAL,
-                lifetime_revenue REAL DEFAULT 0
+                lifetime_revenue REAL DEFAULT 0,
+                is_active INTEGER DEFAULT 1
             )
         """)
         
@@ -189,7 +191,7 @@ def init_full_database():
             )
         """)
         
-        # 5. جدول سجل الأرباح اليومية والتقارير (مع عمود occurred_at و created_at)
+        # 5. جدول سجل الأرباح اليومية والتقارير
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS revenue_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -201,7 +203,18 @@ def init_full_database():
             )
         """)
         
-        # إضافة حساب المسؤول الافتراضي (admin / admin123) لتفادي مشاكل الدخول
+        # 6. جدول سجلات التدقيق (Audit Log) المطلوبة لصفحة /dev/audit-log
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operator_id INTEGER,
+                action TEXT,
+                details TEXT,
+                created_at TEXT
+            )
+        """)
+        
+        # إضافة حساب المسؤول الافتراضي (admin / admin123)
         default_username = "admin"
         default_password = generate_password_hash("admin123")
         cursor.execute(
@@ -211,7 +224,7 @@ def init_full_database():
         
         conn.commit()
         conn.close()
-        print("All database tables and columns initialized successfully.")
+        print("All database tables, columns, and logs initialized successfully.")
     except Exception as e:
         print("Database Initialization Error:", e)
 
