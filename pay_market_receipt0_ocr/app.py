@@ -143,7 +143,7 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
-# إنشاء جميع الجداول المطلوبة عند الإقلاع
+# إنشاء جميع الجداول المطلوبة مع الأعمدة الصحيحة عند الإقلاع
 try:
     conn = sqlite3.connect('hotspot_cards.db')
     cursor = conn.cursor()
@@ -168,12 +168,13 @@ try:
     # 4. جدول vouchers
     cursor.execute("CREATE TABLE IF NOT EXISTS vouchers (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, price REAL, status TEXT)")
     
-    # 5. جدول revenue_log (الخاص بسجل الأرباح اليومية والتقارير)
+    # 5. جدول revenue_log مع عمود occurred_at المطلوب رسمياً في التقارير
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS revenue_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             operator_id INTEGER,
             amount REAL,
+            occurred_at TEXT,
             created_at TEXT,
             date TEXT
         )
@@ -189,7 +190,7 @@ try:
     
     conn.commit()
     conn.close()
-    print("Database and all tables initialized successfully.")
+    print("Database and all tables/columns initialized successfully.")
 except Exception as e:
     print("DB Init Error:", e)
     
