@@ -151,7 +151,7 @@ try:
     cursor.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
     cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
     
-    # 2. جدول المشغلين مع كافة الأعمدة المطلوبة
+    # 2. جدول المشغلين مع كافة الأعمدة
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS operators (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -166,18 +166,29 @@ try:
         )
     """)
     
-    # التأكد من إضافة الأعمدة في حال كان الجدول منشأ مسبقاً ولم يتم حذفه
+    # التأكد من إضافة الأعمدة في حال كان الجدول منشأ مسبقاً
     for col in ["jawwal_pay_number", "support_phone"]:
         try:
             cursor.execute(f"ALTER TABLE operators ADD COLUMN {col} TEXT")
         except Exception:
-            pass  # العمود موجود مسبقاً
+            pass
+            
+    # 3. جدول مسؤولي المشغلين (operator_admins) لمنع خطأ الجدول المفقود
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS operator_admins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator_id INTEGER,
+            username TEXT,
+            password_hash TEXT,
+            created_at TEXT
+        )
+    """)
     
-    # 3. البطاقات والتقارير والسجلات
+    # 4. البطاقات والتقارير والسجلات
     cursor.execute("CREATE TABLE IF NOT EXISTS vouchers (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, price REAL, status TEXT)")
     cursor.execute("CREATE TABLE IF NOT EXISTS revenue_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, amount REAL, occurred_at TEXT, created_at TEXT, date TEXT)")
     
-    # 4. سجلات التدقيق والأمان
+    # 5. سجلات التدقيق والأمان
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -190,7 +201,7 @@ try:
         )
     """)
     
-    # 5. جدول المعاملات
+    # 6. جدول المعاملات
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -206,7 +217,7 @@ try:
     
     conn.commit()
     conn.close()
-    print("Database and all operator columns initialized successfully.")
+    print("Database, operator_admins, and all tables initialized successfully.")
 except Exception as e:
     print("DB Error:", e)
     
