@@ -143,87 +143,38 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
-# تهيئة كلا الاسمين لضمان عدم حدوث أي خطأ في أي مسار فرعي
-for db_name in ['hotspot_cards.db', 'hotspot_cards_v3.db']:
-    try:
-        conn = sqlite3.connect(db_name)
-        cursor = conn.cursor()
-        
-        cursor.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS operators (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                name TEXT, 
-                username TEXT, 
-                slug TEXT,
-                balance REAL,
-                lifetime_revenue REAL DEFAULT 0,
-                is_active INTEGER DEFAULT 1,
-                jawwal_pay_number TEXT,
-                support_phone TEXT
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS operator_admins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                operator_id INTEGER,
-                username TEXT,
-                password_hash TEXT,
-                created_at TEXT
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS vouchers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                operator_id INTEGER,
-                code TEXT, 
-                price REAL, 
-                status TEXT,
-                profile TEXT,
-                duration_hours INTEGER
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS revenue_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                operator_id INTEGER,
-                amount REAL,
-                occurred_at TEXT,
-                created_at TEXT,
-                date TEXT
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                operator_id INTEGER,
-                action TEXT,
-                details TEXT,
-                ip_address TEXT,
-                event_time TEXT,
-                created_at TEXT
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                operator_id INTEGER,
-                amount REAL,
-                amount_paid REAL,
-                status TEXT,
-                created_at TEXT
-            )
-        """)
-        
-        cursor.execute("INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, 'admin', ?)", (generate_password_hash("admin123"),))
-        
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"DB Init Error for {db_name}:", e)
+try:
+    conn1 = sqlite3.connect('hotspot_cards.db')
+    c1 = conn1.cursor()
+    c1.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
+    c1.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
+    c1.execute("CREATE TABLE IF NOT EXISTS operators (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, username TEXT, slug TEXT, balance REAL, lifetime_revenue REAL DEFAULT 0, is_active INTEGER DEFAULT 1, jawwal_pay_number TEXT, support_phone TEXT)")
+    c1.execute("CREATE TABLE IF NOT EXISTS operator_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, username TEXT, password_hash TEXT, created_at TEXT)")
+    c1.execute("CREATE TABLE IF NOT EXISTS vouchers (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, code TEXT, price REAL, status TEXT, profile TEXT, duration_hours INTEGER)")
+    c1.execute("CREATE TABLE IF NOT EXISTS revenue_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, amount REAL, occurred_at TEXT, created_at TEXT, date TEXT)")
+    c1.execute("CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, action TEXT, details TEXT, ip_address TEXT, event_time TEXT, created_at TEXT)")
+    c1.execute("CREATE TABLE IF NOT EXISTS transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, amount REAL, amount_paid REAL, status TEXT, created_at TEXT)")
+    c1.execute("INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, 'admin', ?)", (generate_password_hash("admin123"),))
+    conn1.commit()
+    conn1.close()
 
-print("All databases and dev_admins tables initialized successfully.")
+    conn2 = sqlite3.connect('hotspot_cards_v3.db')
+    c2 = conn2.cursor()
+    c2.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
+    c2.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
+    c2.execute("CREATE TABLE IF NOT EXISTS operators (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, username TEXT, slug TEXT, balance REAL, lifetime_revenue REAL DEFAULT 0, is_active INTEGER DEFAULT 1, jawwal_pay_number TEXT, support_phone TEXT)")
+    c2.execute("CREATE TABLE IF NOT EXISTS operator_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, username TEXT, password_hash TEXT, created_at TEXT)")
+    c2.execute("CREATE TABLE IF NOT EXISTS vouchers (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, code TEXT, price REAL, status TEXT, profile TEXT, duration_hours INTEGER)")
+    c2.execute("CREATE TABLE IF NOT EXISTS revenue_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, amount REAL, occurred_at TEXT, created_at TEXT, date TEXT)")
+    c2.execute("CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, action TEXT, details TEXT, ip_address TEXT, event_time TEXT, created_at TEXT)")
+    c2.execute("CREATE TABLE IF NOT EXISTS transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, amount REAL, amount_paid REAL, status TEXT, created_at TEXT)")
+    c2.execute("INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, 'admin', ?)", (generate_password_hash("admin123"),))
+    conn2.commit()
+    conn2.close()
+    
+    print("Databases initialized cleanly without loops or indentation issues.")
+except Exception as e:
+    print("DB Init Error:", e)
     
     # جدول البطاقات
     cursor.execute('''
