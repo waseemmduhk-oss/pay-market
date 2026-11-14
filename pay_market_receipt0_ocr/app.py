@@ -151,7 +151,7 @@ try:
     cursor.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
     cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
     
-    # 2. جدول المشغلين مع إضافة عمود jawwal_pay_number والأعمدة الشاملة
+    # 2. جدول المشغلين مع كافة الأعمدة المطلوبة
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS operators (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -161,15 +161,17 @@ try:
             balance REAL,
             lifetime_revenue REAL DEFAULT 0,
             is_active INTEGER DEFAULT 1,
-            jawwal_pay_number TEXT
+            jawwal_pay_number TEXT,
+            support_phone TEXT
         )
     """)
     
-    # محاولة إضافة العمود لو كان الجدول منشأ مسبقاً ولم يتم إنشاؤه من الصفر
-    try:
-        cursor.execute("ALTER TABLE operators ADD COLUMN jawwal_pay_number TEXT")
-    except Exception:
-        pass  # العمود موجود مسبقاً ولا داعي لإضافته
+    # التأكد من إضافة الأعمدة في حال كان الجدول منشأ مسبقاً ولم يتم حذفه
+    for col in ["jawwal_pay_number", "support_phone"]:
+        try:
+            cursor.execute(f"ALTER TABLE operators ADD COLUMN {col} TEXT")
+        except Exception:
+            pass  # العمود موجود مسبقاً
     
     # 3. البطاقات والتقارير والسجلات
     cursor.execute("CREATE TABLE IF NOT EXISTS vouchers (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, price REAL, status TEXT)")
@@ -204,7 +206,7 @@ try:
     
     conn.commit()
     conn.close()
-    print("Database and jawwal_pay_number column initialized successfully.")
+    print("Database and all operator columns initialized successfully.")
 except Exception as e:
     print("DB Error:", e)
     
