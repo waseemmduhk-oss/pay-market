@@ -183,7 +183,7 @@ try:
         )
     """)
     
-    # 4. جدول البطاقات مع إضافة عمود profile وعمود operator_id
+    # 4. جدول البطاقات
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS vouchers (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -226,23 +226,30 @@ try:
         )
     """)
     
-    # 7. جدول المعاملات
+    # 7. جدول المعاملات مع إضافة عمود amount_paid
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             operator_id INTEGER,
             amount REAL,
+            amount_paid REAL,
             status TEXT,
             created_at TEXT
         )
     """)
+    
+    for col in ["amount_paid", "amount", "status"]:
+        try:
+            cursor.execute(f"ALTER TABLE transactions ADD COLUMN {col} REAL")
+        except Exception:
+            pass
     
     # حساب المسؤول الافتراضي
     cursor.execute("INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, 'admin', ?)", (generate_password_hash("admin123"),))
     
     conn.commit()
     conn.close()
-    print("Database, vouchers profile column, and all tables initialized successfully.")
+    print("Database, transactions amount_paid column, and all tables initialized successfully.")
 except Exception as e:
     print("DB Error:", e)
     
