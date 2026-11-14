@@ -143,7 +143,7 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
-# إنشاء الجداول وإضافة الحساب الافتراضي عند الإقلاع
+# إنشاء جميع الجداول المطلوبة عند الإقلاع
 try:
     conn = sqlite3.connect('hotspot_cards.db')
     cursor = conn.cursor()
@@ -154,7 +154,7 @@ try:
     # 2. جدول dev_admins
     cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
     
-    # 3. جدول operators مع إضافة عمود lifetime_revenue والأعمدة المطلوبة
+    # 3. جدول operators
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS operators (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -168,6 +168,17 @@ try:
     # 4. جدول vouchers
     cursor.execute("CREATE TABLE IF NOT EXISTS vouchers (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, price REAL, status TEXT)")
     
+    # 5. جدول revenue_log (الخاص بسجل الأرباح اليومية والتقارير)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS revenue_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator_id INTEGER,
+            amount REAL,
+            created_at TEXT,
+            date TEXT
+        )
+    """)
+    
     # إضافة حساب المسؤول الافتراضي (admin / admin123)
     default_username = "admin"
     default_password = generate_password_hash("admin123")
@@ -178,7 +189,7 @@ try:
     
     conn.commit()
     conn.close()
-    print("Database and all tables/columns initialized successfully.")
+    print("Database and all tables initialized successfully.")
 except Exception as e:
     print("DB Init Error:", e)
     
