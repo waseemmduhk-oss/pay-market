@@ -143,15 +143,20 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
+# استخدام اسم قاعدة بيانات جديد كلياً ليتم إنشاؤها نظيفة ومن الصفر
+DB_NAME = 'hotspot_cards_v3.db'
+
 try:
-    conn = sqlite3.connect('hotspot_cards.db')
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # 1. الجداول الأساسية
+    # 1. جدول حماية الطلبات
     cursor.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
+    
+    # 2. جدول مسؤولي المطورين
     cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
     
-    # 2. جدول المشغلين مع كافة الأعمدة
+    # 3. جدول المشغلين بكافة الأعمدة (الاسم، المعرف، جوال باي، هاتف الدعم، الحالة)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS operators (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -166,13 +171,7 @@ try:
         )
     """)
     
-    for col in ["jawwal_pay_number", "support_phone", "slug", "is_active", "lifetime_revenue"]:
-        try:
-            cursor.execute(f"ALTER TABLE operators ADD COLUMN {col} TEXT")
-        except Exception:
-            pass
-            
-    # 3. جدول مسؤولي المشغلين
+    # 4. جدول مسؤولي المشغلين
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS operator_admins (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -183,7 +182,7 @@ try:
         )
     """)
     
-    # 4. جدول البطاقات
+    # 5. جدول البطاقات والكروت بكافة الأعمدة (السعر، البروفايل، المدة بالساعات، الحالة)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS vouchers (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -191,17 +190,12 @@ try:
             code TEXT, 
             price REAL, 
             status TEXT,
-            profile TEXT
+            profile TEXT,
+            duration_hours INTEGER
         )
     """)
     
-    for col in ["operator_id", "profile"]:
-        try:
-            cursor.execute(f"ALTER TABLE vouchers ADD COLUMN {col} TEXT")
-        except Exception:
-            pass
-
-    # 5. جدول سجلات الأرباح
+    # 6. جدول سجلات الأرباح
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS revenue_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -213,7 +207,7 @@ try:
         )
     """)
     
-    # 6. سجلات التدقيق والأمان
+    # 7. سجلات التدقيق والأمان
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -226,7 +220,7 @@ try:
         )
     """)
     
-    # 7. جدول المعاملات مع إضافة عمود amount_paid
+    # 8. جدول المعاملات والمبالغ المدفوعة
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -238,20 +232,14 @@ try:
         )
     """)
     
-    for col in ["amount_paid", "amount", "status"]:
-        try:
-            cursor.execute(f"ALTER TABLE transactions ADD COLUMN {col} REAL")
-        except Exception:
-            pass
-    
-    # حساب المسؤول الافتراضي
+    # إضافة حساب المسؤول الافتراضي للمطورين (admin / admin123)
     cursor.execute("INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, 'admin', ?)", (generate_password_hash("admin123"),))
     
     conn.commit()
     conn.close()
-    print("Database, transactions amount_paid column, and all tables initialized successfully.")
+    print("Fresh database initialized successfully with all required tables and columns.")
 except Exception as e:
-    print("DB Error:", e)
+    print("DB Init Error:", e)
     
     # جدول البطاقات
     cursor.execute('''
