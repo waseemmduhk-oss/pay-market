@@ -203,7 +203,7 @@ def init_full_database():
             )
         """)
         
-        # 6. جدول سجلات التدقيق (Audit Log) المطلوبة لصفحة /dev/audit-log
+        # 6. جدول سجلات التدقيق (Audit Log)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
