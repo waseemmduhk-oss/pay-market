@@ -143,56 +143,80 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
-# إنشاء جميع الجداول المطلوبة مع الأعمدة الصحيحة عند الإقلاع
-try:
-    conn = sqlite3.connect('hotspot_cards.db')
-    cursor = conn.cursor()
-    
-    # 1. جدول rate_limits
-    cursor.execute("CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)")
-    
-    # 2. جدول dev_admins
-    cursor.execute("CREATE TABLE IF NOT EXISTS dev_admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)")
-    
-    # 3. جدول operators
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS operators (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, 
-            name TEXT, 
-            username TEXT, 
-            balance REAL,
-            lifetime_revenue REAL DEFAULT 0
+def init_full_database():
+    """تهيئة قاعدة البيانات بالكامل وإنشاء كافة الجداول والأعمدة المطلوبة لضمان عدم ظهور أخطاء نقص الجداول"""
+    try:
+        conn = sqlite3.connect('hotspot_cards.db')
+        cursor = conn.cursor()
+        
+        # 1. جدول حماية الطلبات
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS rate_limits (
+                key TEXT PRIMARY KEY,
+                count INTEGER,
+                window_start REAL,
+                locked_until REAL
+            )
+        """)
+        
+        # 2. جدول مسؤولي المطورين
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dev_admins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL
+            )
+        """)
+        
+        # 3. جدول المشغلين مع كافة الأعمدة اللازمة
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS operators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                name TEXT, 
+                username TEXT, 
+                balance REAL,
+                lifetime_revenue REAL DEFAULT 0
+            )
+        """)
+        
+        # 4. جدول البطاقات والكروت
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vouchers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                code TEXT, 
+                price REAL, 
+                status TEXT
+            )
+        """)
+        
+        # 5. جدول سجل الأرباح اليومية والتقارير (مع عمود occurred_at و created_at)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS revenue_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operator_id INTEGER,
+                amount REAL,
+                occurred_at TEXT,
+                created_at TEXT,
+                date TEXT
+            )
+        """)
+        
+        # إضافة حساب المسؤول الافتراضي (admin / admin123) لتفادي مشاكل الدخول
+        default_username = "admin"
+        default_password = generate_password_hash("admin123")
+        cursor.execute(
+            "INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, ?, ?)",
+            (default_username, default_password)
         )
-    """)
-    
-    # 4. جدول vouchers
-    cursor.execute("CREATE TABLE IF NOT EXISTS vouchers (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, price REAL, status TEXT)")
-    
-    # 5. جدول revenue_log مع عمود occurred_at المطلوب رسمياً في التقارير
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS revenue_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            operator_id INTEGER,
-            amount REAL,
-            occurred_at TEXT,
-            created_at TEXT,
-            date TEXT
-        )
-    """)
-    
-    # إضافة حساب المسؤول الافتراضي (admin / admin123)
-    default_username = "admin"
-    default_password = generate_password_hash("admin123")
-    cursor.execute(
-        "INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, ?, ?)",
-        (default_username, default_password)
-    )
-    
-    conn.commit()
-    conn.close()
-    print("Database and all tables/columns initialized successfully.")
-except Exception as e:
-    print("DB Init Error:", e)
+        
+        conn.commit()
+        conn.close()
+        print("All database tables and columns initialized successfully.")
+    except Exception as e:
+        print("Database Initialization Error:", e)
+
+# استدعاء الدالة فور إقلاع التطبيق
+init_full_database()
     
     # جدول البطاقات
     cursor.execute('''
