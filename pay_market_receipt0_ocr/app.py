@@ -166,7 +166,6 @@ try:
         )
     """)
     
-    # التأكد من إضافة أعمدة المشغلين لو كان الجدول موجداً مسبقاً
     for col in ["jawwal_pay_number", "support_phone", "slug", "is_active", "lifetime_revenue"]:
         try:
             cursor.execute(f"ALTER TABLE operators ADD COLUMN {col} TEXT")
@@ -184,22 +183,23 @@ try:
         )
     """)
     
-    # 4. جدول البطاقات مع عمود operator_id المطلوب
+    # 4. جدول البطاقات مع إضافة عمود profile وعمود operator_id
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS vouchers (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
             operator_id INTEGER,
             code TEXT, 
             price REAL, 
-            status TEXT
+            status TEXT,
+            profile TEXT
         )
     """)
     
-    # التأكد من إضافة عمود operator_id لجدول vouchers لو كان منشأ مسبقاً
-    try:
-        cursor.execute("ALTER TABLE vouchers ADD COLUMN operator_id INTEGER")
-    except Exception:
-        pass
+    for col in ["operator_id", "profile"]:
+        try:
+            cursor.execute(f"ALTER TABLE vouchers ADD COLUMN {col} TEXT")
+        except Exception:
+            pass
 
     # 5. جدول سجلات الأرباح
     cursor.execute("""
@@ -242,7 +242,7 @@ try:
     
     conn.commit()
     conn.close()
-    print("Database, vouchers operator_id column, and all tables initialized successfully.")
+    print("Database, vouchers profile column, and all tables initialized successfully.")
 except Exception as e:
     print("DB Error:", e)
     
