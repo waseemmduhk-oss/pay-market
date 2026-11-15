@@ -143,16 +143,15 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
-# تهيئة كلا ملفي قاعدة البيانات لضمان التوافق التام مع أي مسار فرعي في التطبيق
 DB_LIST = ['hotspot_cards.db', 'hotspot_cards_v3.db']
 
 for db_name in DB_LIST:
     try:
         conn = sqlite3.connect(db_name)
-        c = conn.cursor()
+        cursor = conn.cursor()
         
         # 1. جدول حماية الطلبات
-        c.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS rate_limits (
                 key TEXT PRIMARY KEY, 
                 count INTEGER, 
@@ -162,7 +161,7 @@ for db_name in DB_LIST:
         """)
         
         # 2. جدول مسؤولي المطورين
-        c.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS dev_admins (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 username TEXT UNIQUE NOT NULL, 
@@ -170,8 +169,8 @@ for db_name in DB_LIST:
             )
         """)
         
-        # 3. جدول المشغلين بكافة الأعمدة المطلوبة في المسارات والواجهات
-        c.execute("""
+        # 3. جدول المشغلين بكافة الأعمدة المطلوبة
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS operators (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 name TEXT, 
@@ -188,19 +187,18 @@ for db_name in DB_LIST:
             )
         """)
         
-        # التأكد من إضافة أي عمود ناقص في حال كان الجدول منشأ مسبقاً
         operator_columns = [
             "jawwal_pay_number", "support_phone", "hotspot_title", 
             "hotspot_login_url", "logo_size", "slug", "is_active", "lifetime_revenue"
         ]
         for col in operator_columns:
             try:
-                c.execute(f"ALTER TABLE operators ADD COLUMN {col} TEXT")
+                cursor.execute(f"ALTER TABLE operators ADD COLUMN {col} TEXT")
             except Exception:
                 pass
                 
         # 4. جدول مسؤولي المشغلين
-        c.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS operator_admins (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 operator_id INTEGER,
@@ -210,8 +208,8 @@ for db_name in DB_LIST:
             )
         """)
         
-        # 5. جدول البطاقات والكروت بكافة الأعمدة
-        c.execute("""
+        # 5. جدول البطاقات والكروت
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS vouchers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 operator_id INTEGER,
@@ -226,12 +224,12 @@ for db_name in DB_LIST:
         voucher_columns = ["operator_id", "profile", "duration_hours", "price", "status"]
         for col in voucher_columns:
             try:
-                c.execute(f"ALTER TABLE vouchers ADD COLUMN {col} TEXT")
+                cursor.execute(f"ALTER TABLE vouchers ADD COLUMN {col} TEXT")
             except Exception:
                 pass
 
         # 6. جدول سجلات الأرباح
-        c.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS revenue_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 operator_id INTEGER,
@@ -243,7 +241,7 @@ for db_name in DB_LIST:
         """)
         
         # 7. سجلات التدقيق والأمان
-        c.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 operator_id INTEGER,
@@ -258,12 +256,12 @@ for db_name in DB_LIST:
         audit_columns = ["ip_address", "event_time", "operator_id", "action", "details"]
         for col in audit_columns:
             try:
-                c.execute(f"ALTER TABLE audit_log ADD COLUMN {col} TEXT")
+                cursor.execute(f"ALTER TABLE audit_log ADD COLUMN {col} TEXT")
             except Exception:
                 pass
 
         # 8. جدول المعاملات والمبالغ المدفوعة
-        c.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 operator_id INTEGER,
@@ -277,19 +275,19 @@ for db_name in DB_LIST:
         transaction_columns = ["operator_id", "amount", "amount_paid", "status"]
         for col in transaction_columns:
             try:
-                c.execute(f"ALTER TABLE transactions ADD COLUMN {col} REAL")
+                cursor.execute(f"ALTER TABLE transactions ADD COLUMN {col} REAL")
             except Exception:
                 pass
         
-        # إضافة حساب المسؤول الافتراضي للمطورين (admin / admin123)
-        c.execute(
+        # حساب المسؤول الافتراضي
+        cursor.execute(
             "INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, 'admin', ?)", 
             (generate_password_hash("admin123"),)
         )
         
         conn.commit()
         conn.close()
-        print(f"Database {db_name} initialized successfully with all tables and columns.")
+        print(f"Database {db_name} initialized successfully.")
         
     except Exception as e:
         print(f"DB Init Error for {db_name}:", e)
