@@ -63,13 +63,15 @@ app.session_interface = ScopedSessionInterface()
 #حد حجم الملفات المرفوعة (5MB كحد أقصى)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024    # 5 ميغابايت
 
-# قراءة رابط قاعدة البيانات السحابية من Render، والرجوع للمحلية عند العمل على حاسوبك
+# تحديد المسار المطلق لمجلد المشروع لتجنب ضياع ملف قاعدة البيانات
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# إذا لم يتوفر رابط سحابي، استخدم SQLite المحلي
-DATABASE = DATABASE_URL if DATABASE_URL else 'hotspot_cards.db'
+# إذا لم يتوفر رابط سحابي، استخدم مساراً مطلقاً لملف الـ SQLite داخل مجلد المشروع
+DATABASE = DATABASE_URL if DATABASE_URL else os.path.join(BASE_DIR, 'hotspot_cards.db')
 
 #CSRF PROTECTION — توليد وفحص التوكن# ── CSRF ────────────────────────────────────────────────────────────────────
 def generate_csrf_token():
