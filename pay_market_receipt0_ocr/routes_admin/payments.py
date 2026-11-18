@@ -290,8 +290,6 @@ def admin_payments(slug):
 
 @admin_bp.route('/<slug>/admin/payments/<int:order_id>/receipt')
 def view_receipt(slug, order_id):
-    """يعرض صورة/PDF إشعار الدفع المرفوع لطلب معيّن — محمي بتسجيل دخول الأدمن
-    فقط (الملفات مخزّنة خارج static/ عمداً لهذا السبب، انظر RECEIPTS_DIR)."""
     if not _require_admin_login(slug): return "غير مسموح", 403
     operator_id = g.operator['id']
     conn = get_db_connection()
@@ -374,18 +372,11 @@ def save_telegram_settings(slug):
     current = conn.execute("SELECT telegram_webhook_secret FROM operators WHERE id=?", (operator_id,)).fetchone()
     webhook_secret = current['telegram_webhook_secret'] if current else None
 
-    # نسجّل رابط webhook عند تيليجرام حتى تشتغل أزرار "تأكيد/رفض" اللي بترسل
-    # مع صورة الإيصال — بدون هذا التسجيل، الأزرار تظهر بس الضغط عليها ما بوصل
-    # للتطبيق أبداً (تيليجرام ما بعرف لوين يوجّه الضغطة)
     webhook_msg = ''
     webhook_ok  = False
     if bot_token and chat_id:
         if not webhook_secret:
             webhook_secret = _secrets_mod.token_hex(20)
-        # _external=True + _scheme='https' يضمن رابط https:// دايماً بغض النظر
-        # عن إعداد الـreverse proxy (request.host_url ممكن يرجّع http:// لو
-        # ProxyFix/PROXY_LAYERS مو مضبوطين تماماً، وتيليجرام يرفض أي webhook
-        # مو https بصمت تقريباً — هذا كان السبب الأرجح لعدم ظهور/عمل الأزرار)
         webhook_url = url_for('payment.telegram_webhook', webhook_secret=webhook_secret,
                                _external=True, _scheme='https')
         try:
@@ -402,10 +393,8 @@ def save_telegram_settings(slug):
         except Exception as e:
             webhook_msg = f' (تنبيه: تعذّر الاتصال بتيليجرام لتفعيل الأزرار — {e})'
     else:
-        webhook_secret = None   # ما في بوت مفعّل حالياً
+        webhook_secret = None
 
-    # لا نحفظ سرّاً محلياً يوهم إن الأزرار شغّالة لو التسجيل عند تيليجرام فشل
-    # فعلياً — أفضل نوضّح إنها "غير مفعّلة" بدل أزرار تظهر وما بتستجيب
     if bot_token and chat_id and not webhook_ok:
         webhook_secret = None
 
@@ -422,9 +411,6 @@ def save_telegram_settings(slug):
 # ═══════════════════════════════════════════════════════════════════════════
 # حسابات الزبائن: بحث + إعادة ضبط كلمة المرور
 # ═══════════════════════════════════════════════════════════════════════════
-# المنصة بلا خدمة SMS، وكلمات مرور الزبائن مخزَّنة مشفّرة (ما بتنرسل أصلاً) — فالزبون
-# اللي نسي كلمة مروره بيتواصل مع الشبكة (واتساب/اتصال) والمشغّل يعيد ضبطها من هون
-# بضغطة: تتولّد كلمة جديدة تظهر مرة واحدة، مع زر يرسلها للزبون على واتساب.
 def _customers_page_html(operator, slug, rows, q, csrf_token, notice=None):
     reset_base = url_for('admin.admin_customers', slug=slug)
     notice_html = ''
@@ -452,7 +438,11 @@ def _customers_page_html(operator, slug, rows, q, csrf_token, notice=None):
                 <td class="py-3.5 px-3 text-sm font-mono font-bold text-slate-700 dark:text-slate-200" dir="ltr">{html_lib_escape(r['phone'])}</td>
                 <td class="py-3.5 px-3 text-xs text-slate-500 dark:text-slate-400">{r['cards']} بطاقة</td>
                 <td class="py-3.5 px-3 text-[11px] text-slate-400 dark:text-slate-500 font-mono">{html_lib_escape(str(r['created_at'] or ''))[:16]}</td>
-                <td class="py-3.5 px-3">
+                <td class="py-3.5 px-3 flex gap-2 justify-end">
+                    <form method="POST" action="{reset_base}/{r['id']}/login-as" class="inline">
+                        <input type="hidden" name="_csrf_token" value="{csrf_token}">
+                        <button type="submit" class="bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-colors"><i class="fa-solid fa-right-to-bracket"></i> دخول بحسابه</button>
+                    </form>
                     <button type="button" data-id="{r['id']}" data-phone="{html_lib_escape(r['phone'])}" onclick="openResetModal(this)"
                             class="bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 text-amber-600 dark:text-amber-400 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-colors"><i class="fa-solid fa-key"></i> إعادة ضبط كلمة المرور</button>
                 </td>
@@ -583,7 +573,6 @@ def admin_reset_customer_password(slug, customer_id):
     conn.execute("UPDATE customers SET password_hash=? WHERE id=? AND operator_id=?",
                  (_gen_hash(new_pw), customer_id, operator_id))
     conn.commit()
-    # تصفير قفل محاولات الاسترجاع الذاتي لنفس الرقم (لو كان محظوراً بسبب محاولات فاشلة)
     try:
         rate_limit.reset(conn, f"customer_reset_phone:{operator_id}:{cust['phone']}")
     except Exception:
@@ -596,3 +585,24 @@ def admin_reset_customer_password(slug, customer_id):
     return _customers_page_html(operator, slug, rows, phone, current_app.generate_csrf_token(),
                                 {'kind': 'success', 'text': f'تمت إعادة ضبط كلمة مرور الزبون {phone}. كلمة المرور الجديدة:',
                                  'password': new_pw, 'phone': phone})
+
+
+@admin_bp.route('/<slug>/admin/customers/<int:customer_id>/login-as', methods=['POST'])
+def admin_login_as_customer(slug, customer_id):
+    if not _require_admin_login(slug): return "غير مسموح", 403
+    current_app.validate_csrf()
+    operator_id = g.operator['id']
+    
+    conn = get_db_connection()
+    cust = conn.execute("SELECT id, phone FROM customers WHERE id=? AND operator_id=?", (customer_id, operator_id)).fetchone()
+    conn.close()
+    
+    if not cust:
+        session['admin_message'] = ('error', 'الزبون غير موجود.')
+        return redirect(url_for('admin.admin_customers', slug=slug))
+    
+    session['customer_logged_in'] = True
+    session['customer_phone'] = cust['phone']
+    session['customer_operator_id'] = operator_id
+    write_audit("ADMIN_LOGIN_AS_CUSTOMER", f"دخول مباشر بحساب الزبون {cust['phone']}", operator_id=operator_id)
+    return redirect(url_for('user.user_dashboard', slug=slug))
