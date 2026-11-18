@@ -143,6 +143,9 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
+import sqlite3
+from werkzeug.security import generate_password_hash
+
 try:
     conn = sqlite3.connect('hotspot_cards.db')
     cursor = conn.cursor()
@@ -166,7 +169,7 @@ try:
         )
     """)
     
-    # 3. جدول المشغلين بكافة الأعمدة المطلوبة
+    # 3. جدول المشغلين مع إضافة عمود logo_filename وكافة الأعمدة الأخرى
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS operators (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -180,13 +183,14 @@ try:
             support_phone TEXT,
             hotspot_title TEXT,
             hotspot_login_url TEXT,
-            logo_size TEXT
+            logo_size TEXT,
+            logo_filename TEXT
         )
     """)
     
     operator_columns = [
         "jawwal_pay_number", "support_phone", "hotspot_title", 
-        "hotspot_login_url", "logo_size", "slug", "is_active", "lifetime_revenue"
+        "hotspot_login_url", "logo_size", "logo_filename", "slug", "is_active", "lifetime_revenue"
     ]
     for col in operator_columns:
         try:
@@ -284,7 +288,7 @@ try:
     
     conn.commit()
     conn.close()
-    print("Database hotspot_cards.db initialized successfully with all tables.")
+    print("Database hotspot_cards.db initialized successfully with logo_filename.")
     
 except Exception as e:
     print("DB Init Error:", e)
