@@ -5,6 +5,7 @@ from flask import session, redirect, url_for, current_app
 # تحديد المسار المطلق الثابت لضمان اتصال جميع ملفات المشروع بنفس قاعدة البيانات
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 DATABASE_PATH = os.path.join(BASE_DIR, 'hotspot_cards.db')
+DATABASE = os.environ.get('DATABASE_URL', 'hotspot_cards.db')
 
 def get_db_connection():
     """فتح اتصال موحد مع قاعدة البيانات باستخدام المسار المطلق"""
