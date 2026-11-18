@@ -2,20 +2,16 @@ import os
 import sqlite3
 from flask import session, current_app, Blueprint
 
-# تحديد المسار المطلق للمشروع وقاعدة البيانات
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-DATABASE_PATH = os.path.join(BASE_DIR, 'hotspot_cards.db')
-BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
-
-# التأكد من وجود مجلد النسخ الاحتياطي
-os.makedirs(BACKUP_DIR, exist_ok=True)
-
-DATABASE = os.environ.get('DATABASE_URL', DATABASE_PATH)
+# تحديد اسم ملف قاعدة البيانات محلياً وبشكل مضمون داخل المجلد الحالي
+DATABASE = os.environ.get('DATABASE_URL', 'hotspot_cards.db')
 if DATABASE and DATABASE.startswith("postgres://"):
     DATABASE = DATABASE.replace("postgres://", "postgresql://", 1)
 
+BACKUP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../backups'))
+os.makedirs(BACKUP_DIR, exist_ok=True)
+
 def get_db_connection():
-    """فتح اتصال موحد مع قاعدة البيانات"""
+    """فتح اتصال آمن ومحلي مع قاعدة البيانات"""
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
@@ -23,7 +19,7 @@ def get_db_connection():
 # إعدادات النظام ولوحة المطور
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION = 300  # 5 دقائق
-LOW_STOCK_THRESHOLD = 10  # الحد الأدنى لتنبيه نفاد البطاقات
+LOW_STOCK_THRESHOLD = 10
 
 # تعريف Blueprint الخاصة بالمطورين
 dev_bp = Blueprint('dev', __name__)
