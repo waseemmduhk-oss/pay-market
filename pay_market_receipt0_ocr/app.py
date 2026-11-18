@@ -132,504 +132,207 @@ def add_security_headers(response):
     return response
 
 def init_db_auto():
-    """تهيئة قاعدة البيانات وتحديث الهيكل تلقائياً"""
-    conn   = sqlite3.connect(DATABASE)
+    """تهيئة قاعدة البيانات وتحديث الهيكل تلقائياً بشكل شامل وآمن"""
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
 
-    # فحص ذكي: إذا كانت قاعدة البيانات قديمة ولا تحتوي على عمود username
     try:
-        cursor.execute("SELECT username FROM vouchers LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("DROP TABLE IF EXISTS vouchers")
-        cursor.execute("DROP TABLE IF EXISTS transactions")
+        # 1. جدول حماية الطلبات وتحديد المعدل (Rate Limiting)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS rate_limits (
+                key TEXT PRIMARY KEY, 
+                count INTEGER, 
+                window_start REAL, 
+                locked_until REAL
+            )
+        """)
+        
+        # 2. جدول مسؤولي المطورين (Superadmin)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dev_admins (
+                id INTEGER PRIMARY KEY CHECK (id = 1), 
+                username TEXT NOT NULL, 
+                password_hash TEXT NOT NULL,
+                warning_dismissed INTEGER DEFAULT 0
+            )
+        """)
+        
+        # 3. جدول المشغلين والشبكات (Operators - Multi-Tenant)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS operators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                name TEXT, 
+                username TEXT, 
+                slug TEXT UNIQUE NOT NULL,
+                balance REAL,
+                lifetime_revenue REAL DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                jawwal_pay_number TEXT,
+                support_phone TEXT,
+                hotspot_title TEXT,
+                hotspot_login_url TEXT DEFAULT 'http://00.00.00.00/login',
+                logo_size TEXT DEFAULT 'medium',
+                logo_filename TEXT,
+                telegram_bot_token TEXT,
+                telegram_chat_id TEXT,
+                telegram_webhook_secret TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # 4. جدول مسؤولي المشغلين (Operator Admins)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS operator_admins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operator_id INTEGER NOT NULL UNIQUE,
+                username TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(operator_id) REFERENCES operators(id)
+            )
+        """)
+        
+        # 5. جدول البطاقات والكروت (Vouchers)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vouchers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                operator_id INTEGER,
+                username TEXT NOT NULL,
+                password TEXT NOT NULL,
+                code TEXT, 
+                price REAL NOT NULL, 
+                status TEXT DEFAULT 'available',
+                profile TEXT NOT NULL,
+                duration_hours INTEGER NOT NULL DEFAULT 0,
+                seq INTEGER,
+                FOREIGN KEY(operator_id) REFERENCES operators(id)
+            )
+        """)
 
-try:
-    conn = sqlite3.connect('hotspot_cards.db')
-    cursor = conn.cursor()
-    
-    # 1. جدول حماية الطلبات
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS rate_limits (
-            key TEXT PRIMARY KEY, 
-            count INTEGER, 
-            window_start REAL, 
-            locked_until REAL
+        # 6. جدول الطلبات المعلقة والتحقق من الإيصالات (Pending Orders & OCR)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS pending_orders (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_token        TEXT UNIQUE NOT NULL,
+                operator_id        INTEGER NOT NULL,
+                customer_phone     TEXT NOT NULL,
+                voucher_ids        TEXT NOT NULL,
+                wallet_code        TEXT NOT NULL,
+                base_amount        REAL NOT NULL,
+                exact_amount       REAL NOT NULL,
+                status             TEXT NOT NULL DEFAULT 'pending',
+                receipt_filename   TEXT,
+                receipt_hash       TEXT,
+                ocr_raw_text       TEXT,
+                ocr_parsed_amount  REAL,
+                ocr_match_status   TEXT,
+                ocr_reference      TEXT,
+                created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at         REAL NOT NULL,
+                confirmed_at       TIMESTAMP,
+                FOREIGN KEY(operator_id) REFERENCES operators(id)
+            )
+        ''')
+        
+        # 7. جدول المعاملات والمبالغ المدفوعة (Transactions)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operator_id INTEGER,
+                amount REAL,
+                amount_paid REAL,
+                status TEXT,
+                wallet_code TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(operator_id) REFERENCES operators(id)
+            )
+        """)
+        
+        # 8. جدول سجلات الأرباح والإيرادات اليومية (Revenue Log)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS revenue_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operator_id INTEGER NOT NULL,
+                amount REAL NOT NULL,
+                occurred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(operator_id) REFERENCES operators(id)
+            )
+        """)
+        
+        # 9. سجلات التدقيق والأمان (Audit Log)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operator_id INTEGER,
+                actor TEXT,
+                action TEXT NOT NULL,
+                details TEXT,
+                ip_address TEXT,
+                event_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # 10. جدول سجلات الرسائل القديم (للحفاظ على التوافقية التاريخية SMS Log)
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sms_log (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator_id      INTEGER NOT NULL,
+            raw_message      TEXT,
+            parsed_amount    REAL,
+            parsed_phone     TEXT,
+            matched_order_id INTEGER,
+            match_status     TEXT NOT NULL,
+            received_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """)
-    
-    # 2. جدول مسؤولي المطورين
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS dev_admins (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, 
-            username TEXT UNIQUE NOT NULL, 
-            password_hash TEXT NOT NULL
-        )
-    """)
-    
-    # 3. جدول المشغلين
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS operators (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, 
-            name TEXT, 
-            username TEXT, 
-            slug TEXT,
-            balance REAL,
-            lifetime_revenue REAL DEFAULT 0,
-            is_active INTEGER DEFAULT 1,
-            jawwal_pay_number TEXT,
-            support_phone TEXT,
-            hotspot_title TEXT,
-            hotspot_login_url TEXT,
-            logo_size TEXT,
-            logo_filename TEXT
-        )
-    """)
-    
-    operator_columns = [
-        "jawwal_pay_number", "support_phone", "hotspot_title", 
-        "hotspot_login_url", "logo_size", "logo_filename", "slug", "is_active", "lifetime_revenue"
-    ]
-    for col in operator_columns:
-        try:
-            cursor.execute(f"ALTER TABLE operators ADD COLUMN {col} TEXT")
-        except Exception:
-            pass
-            
-    # 4. جدول مسؤولي المشغلين
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS operator_admins (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            operator_id INTEGER,
-            username TEXT,
-            password_hash TEXT,
-            created_at TEXT
-        )
-    """)
-    
-    # 5. جدول البطاقات والكروت معافة الأعمدة المطلوبة (username, password, seq, etc.)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS vouchers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, 
-            operator_id INTEGER,
-            username TEXT,
-            password TEXT,
-            code TEXT, 
-            price REAL, 
-            status TEXT,
-            profile TEXT,
-            duration_hours INTEGER,
-            seq INTEGER
-        )
-    """)
-    
-    voucher_columns = ["operator_id", "username", "password", "code", "price", "status", "profile", "duration_hours", "seq"]
-    for col in voucher_columns:
-        try:
-            cursor.execute(f"ALTER TABLE vouchers ADD COLUMN {col} TEXT")
-        except Exception:
-            pass
+        ''')
 
-    # 6. جدول سجلات الأرباح
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS revenue_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            operator_id INTEGER,
-            amount REAL,
-            occurred_at TEXT,
-            created_at TEXT,
-            date TEXT
-        )
-    """)
-    
-    # 7. سجلات التدقيق والأمان
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS audit_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            operator_id INTEGER,
-            action TEXT,
-            details TEXT,
-            ip_address TEXT,
-            event_time TEXT,
-            created_at TEXT
-        )
-    """)
-    
-    audit_columns = ["ip_address", "event_time", "operator_id", "action", "details"]
-    for col in audit_columns:
-        try:
-            cursor.execute(f"ALTER TABLE audit_log ADD COLUMN {col} TEXT")
-        except Exception:
-            pass
+        # ── إنشاء الفهارس (Indexes) لسرعة الأداء ───────────────────────────
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vouchers_operator ON vouchers(operator_id, id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vouchers_lookup ON vouchers(operator_id, status, price, profile, duration_hours)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pending_orders_receipt_hash ON pending_orders(operator_id, receipt_hash)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pending_orders_ocr_reference ON pending_orders(operator_id, ocr_reference)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pending_orders_lookup ON pending_orders(operator_id, status, exact_amount)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sms_log_operator ON sms_log(operator_id, received_at)")
 
-    # 8. جدول المعاملات والمبالغ المدفوعة
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            operator_id INTEGER,
-            amount REAL,
-            amount_paid REAL,
-            status TEXT,
-            created_at TEXT
-        )
-    """)
-    
-    transaction_columns = ["operator_id", "amount", "amount_paid", "status"]
-    for col in transaction_columns:
-        try:
-            cursor.execute(f"ALTER TABLE transactions ADD COLUMN {col} REAL")
-        except Exception:
-            pass
-    
-    # حساب المسؤول الافتراضي
-    cursor.execute(
-        "INSERT OR IGNORE INTO dev_admins (id, username, password_hash) VALUES (1, 'admin', ?)", 
-        (generate_password_hash("admin123"),)
-    )
-    
-    conn.commit()
-    conn.close()
-    print("Database hotspot_cards.db initialized successfully with vouchers columns.")
-    
-except Exception as e:
-    print("DB Init Error:", e)
-    
-    # جدول البطاقات
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS vouchers (
-        id       INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT    NOT NULL,
-        password TEXT    NOT NULL,
-        price    REAL    NOT NULL,
-        profile  TEXT    NOT NULL,
-        status   TEXT    DEFAULT 'available',
-        UNIQUE(username, password)
-    )
-    ''')
+        # ── إنشاء الحسابات الافتراضية عند التشغيل لأول مرة ──────────────────
+        
+        # أ. حساب المشغل الافتراضي
+        existing_operator = cursor.execute("SELECT id FROM operators LIMIT 1").fetchone()
+        if not existing_operator:
+            cursor.execute(
+                "INSERT INTO operators (slug, name, is_active) VALUES (?, ?, 1)",
+                ("default", "شبكة market للانترنت")
+            )
+            default_op_id = cursor.lastrowid
 
-    # جدول العمليات
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS transactions (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        transaction_id TEXT    UNIQUE,
-        customer_phone TEXT,
-        voucher_id     INTEGER,
-        amount_paid    REAL,
-        wallet_code    TEXT,
-        created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(voucher_id) REFERENCES vouchers(id)
-    )
-    ''')
+            cursor.execute(
+                "INSERT INTO operator_admins (operator_id, username, password_hash) VALUES (?, ?, ?)",
+                (default_op_id, "admin", generate_password_hash("2026"))
+            )
 
-    # ترقية: إضافة wallet_code لقواعد البيانات القديمة
-    try:
-        cursor.execute("SELECT wallet_code FROM transactions LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE transactions ADD COLUMN wallet_code TEXT")
+            # ربط أي بيانات يتيمة بالمشغل الافتراضي
+            cursor.execute("UPDATE vouchers SET operator_id=? WHERE operator_id IS NULL", (default_op_id,))
+            cursor.execute("UPDATE transactions SET operator_id=? WHERE operator_id IS NULL", (default_op_id,))
+            cursor.execute("UPDATE audit_log SET operator_id=? WHERE operator_id IS NULL", (default_op_id,))
 
-    # ── جدول سجل النشاط (Audit Log) ────────────────────────────────────────
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS audit_log (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        actor      TEXT NOT NULL,
-        action     TEXT NOT NULL,
-        details    TEXT,
-        ip_address TEXT
-    )
-    ''')
+        # ب. حساب المطور الافتراضي (Superadmin)
+        dev_existing = cursor.execute("SELECT id FROM dev_admins WHERE id=1").fetchone()
+        if not dev_existing:
+            cursor.execute(
+                "INSERT INTO dev_admins (id, username, password_hash) VALUES (1, ?, ?)",
+                ("dev", generate_password_hash("ChangeMe#2026"))
+            )
 
-    # إضافة operator_id للجداول القديمة إذا لم يكن موجوداً — يجب أن يحدث هنا
-    for _table in ('vouchers', 'transactions', 'audit_log'):
-        try:
-            cursor.execute(f"SELECT operator_id FROM {_table} LIMIT 1")
-        except sqlite3.OperationalError:
-            cursor.execute(f"ALTER TABLE {_table} ADD COLUMN operator_id INTEGER")
+        conn.commit()
+        print("✅ تم فحص وإنشاء جميع جداول وقواعد بيانات الموقع بنجاح تام وبدون أخطاء.")
 
-    # ── جدول Rate Limiting مشترك (بديل القواميس بالذاكرة) ──────────────────
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS rate_limits (
-        key          TEXT PRIMARY KEY,
-        count        INTEGER NOT NULL DEFAULT 0,
-        window_start REAL    NOT NULL DEFAULT 0,
-        locked_until REAL    NOT NULL DEFAULT 0
-    )
-    ''')
-
-    # تنظيف: حذف أي جدول قديم غير مستخدم متبقٍّ من إصدارات سابقة من قاعدة
-    # البيانات الفعلية (لا يوجد أي كود آخر يُنشئه أو يقرأ منه بعد الآن)
-    cursor.execute("DROP TABLE IF EXISTS admin_settings")
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # ── دعم تعدد المشغّلين (Multi-Tenant) ──────────────────────────────────
-    # ═══════════════════════════════════════════════════════════════════════
-
-    # جدول المشغّلين (كل مشغّل = شبكة/نقطة بيع مستقلة بواجهتها الخاصة)
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS operators (
-        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-        slug               TEXT UNIQUE NOT NULL,
-        name               TEXT NOT NULL,
-        hotspot_title      TEXT DEFAULT '',
-        hotspot_login_url  TEXT DEFAULT 'http://00.00.00.00/login',
-        jawwal_pay_number  TEXT DEFAULT '',
-        support_phone      TEXT DEFAULT '',
-        is_active          INTEGER DEFAULT 1,
-        lifetime_revenue   REAL DEFAULT 0,
-        created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
-
-    # ترقية: عنوان (رابط) صفحة تسجيل الدخول بجهاز الهوتسبوت (MikroTik) الخاص
-    try:
-        cursor.execute("SELECT hotspot_login_url FROM operators LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE operators ADD COLUMN hotspot_login_url TEXT DEFAULT 'http://00.00.00.00/login'")
-
-    # ترقية: أعمدة جديدة على جدول operators لقواعد البيانات القديمة
-    try:
-        cursor.execute("SELECT hotspot_title FROM operators LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE operators ADD COLUMN hotspot_title TEXT DEFAULT ''")
-    try:
-        cursor.execute("SELECT lifetime_revenue FROM operators LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE operators ADD COLUMN lifetime_revenue REAL DEFAULT 0")
-        # ملاحظة: تعبئة الرصيد الأولي من transactions تحتاج operator_id مربوطاً
-        # فعلياً بكل عملية، وهذا لا يتوفر إلا بعد اكتمال تهيئة المشغّل
-        # الافتراضي أدناه — لذلك التعبئة الفعلية تحصل لاحقاً، وليس هنا.
-
-    # ترقية: إعدادات تنبيه تيليجرام الاختيارية — عند وصول إشعار دفع يحتاج مراجعة يدوية
-    try:
-        cursor.execute("SELECT telegram_bot_token FROM operators LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE operators ADD COLUMN telegram_bot_token TEXT")
-        cursor.execute("ALTER TABLE operators ADD COLUMN telegram_chat_id TEXT")
-
-    # ترقية: رمز سرّي فريد لكل مشغّل يُستخدم برابط استقبال ضغطات أزرار
-    # "تأكيد/رفض" من تيليجرام (/telegram/webhook/<secret>) — يُولَّد تلقائياً
-    # أول مرة يحفظ فيها المشغّل إعدادات بوت تيليجرام
-    try:
-        cursor.execute("SELECT telegram_webhook_secret FROM operators LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE operators ADD COLUMN telegram_webhook_secret TEXT")
-
-    # ترقية: شعار (لوجو) خاص بكل شبكة يظهر بمتجرها بدل أيقونة الواي فاي الافتراضية
-    try:
-        cursor.execute("SELECT logo_filename FROM operators LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE operators ADD COLUMN logo_filename TEXT DEFAULT ''")
-
-    # ترقية منفصلة: حجم عرض اللوجو (قد تكون logo_filename موجودة من تحديث سابق
-    # بدون logo_size، فلازم فحص مستقل حتى تُضاف لقواعد البيانات المُرقّاة سابقاً)
-    try:
-        cursor.execute("SELECT logo_size FROM operators LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE operators ADD COLUMN logo_size TEXT DEFAULT 'medium'")
-
-    # ترقية: عدد ساعات الاستخدام لكل فئة بطاقات (منفصل عن بروفايل السرعة) —
-    # يُستخدم لعرض "X ساعات" بوضوح للزبون في المتجر بدل الاعتماد على بروفايل السرعة فقط
-    try:
-        cursor.execute("SELECT duration_hours FROM vouchers LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE vouchers ADD COLUMN duration_hours INTEGER NOT NULL DEFAULT 0")
-        # تعبئة فورية لعدد الساعات للكروت المرفوعة مسبقاً (قبل وجود هذا العمود)
-        # حسب نفس الجدول الثابت (بروفايل + سعر) المستخدم بالكود الآن
-        for _profile, _price, _hours in [("2M", 1, 8), ("3M", 2, 10), ("5M", 2, 2), ("2M", 3, 24)]:
-            cursor.execute("UPDATE vouchers SET duration_hours=? WHERE profile=? AND price=?", (_hours, _profile, _price))
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # ── نظام التحقق من الدفع عبر رفع صورة الإشعار + قراءة آلية (OCR) ─────────
-    # ═══════════════════════════════════════════════════════════════════════
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS pending_orders (
-        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-        order_token        TEXT    UNIQUE NOT NULL,
-        operator_id        INTEGER NOT NULL,
-        customer_phone     TEXT    NOT NULL,
-        voucher_ids        TEXT    NOT NULL,
-        wallet_code        TEXT    NOT NULL,
-        base_amount        REAL    NOT NULL,
-        exact_amount       REAL    NOT NULL,
-        status             TEXT    NOT NULL DEFAULT 'pending',
-        receipt_filename   TEXT,
-        receipt_hash       TEXT,
-        ocr_raw_text       TEXT,
-        ocr_parsed_amount  REAL,
-        ocr_match_status   TEXT,
-        ocr_reference      TEXT,
-        created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        expires_at         REAL    NOT NULL,
-        confirmed_at       TIMESTAMP,
-        FOREIGN KEY(operator_id) REFERENCES operators(id)
-    )
-    ''')
-    # ترقية: أعمدة صورة الإشعار وقراءة الـOCR لقواعد بيانات مُنشأة قبل التحويل
-    # من نظام تحويل رسائل SMS إلى رفع صورة الإشعار. ocr_reference أُضيف لاحقاً
-    # (رمز الحركة المستخرَج من الإيصال) لمنع إعادة استخدام نفس التحويل الحقيقي
-    # عبر صورة مختلفة (بعكس receipt_hash اللي بيتغيّر لو انضغطت/انقصّت الصورة)
-    for _col, _decl in [
-        ('receipt_filename',  'TEXT'),
-        ('receipt_hash',      'TEXT'),
-        ('ocr_raw_text',      'TEXT'),
-        ('ocr_parsed_amount', 'REAL'),
-        ('ocr_match_status',  'TEXT'),
-        ('ocr_reference',     'TEXT'),
-    ]:
-        try:
-            cursor.execute(f"SELECT {_col} FROM pending_orders LIMIT 1")
-        except sqlite3.OperationalError:
-            cursor.execute(f"ALTER TABLE pending_orders ADD COLUMN {_col} {_decl}")
-    # فهرس: نبحث بـ receipt_hash عن إعادة استخدام نفس صورة الإشعار (احتيال محتمل)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_pending_orders_receipt_hash ON pending_orders(operator_id, receipt_hash)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_pending_orders_ocr_reference ON pending_orders(operator_id, ocr_reference)")
-    # فهارس: نبحث كثيراً بـ (operator_id, status) لجلب الطلبات المعلّقة عند
-    # المطابقة، وبـ order_token لصفحة الانتظار
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_pending_orders_lookup ON pending_orders(operator_id, status, exact_amount)")
-
-    # تنظيف: نظام تحويل رسائل SMS أُزيل نهائياً — نحذف عمود التوكن الخاص به
-    # لو كان موجوداً بقاعدة بيانات مُرقّاة من نسخة سابقة (يتطلب SQLite 3.35+
-    # لدعم DROP COLUMN؛ الاستثناء يحمي أي نسخة أقدم فقط، والعمود يبقى غير
-    # مُستخدَم بالكود بأي حال لو تعذّر حذفه). جدول sms_log القديم يبقى كسجل
-    # تاريخي كما هو (بيانات وليست كوداً) ولا يُكتب إليه بعد الآن.
-    try:
-        cursor.execute("SELECT webhook_token FROM operators LIMIT 1")
-        try:
-            cursor.execute("ALTER TABLE operators DROP COLUMN webhook_token")
-        except sqlite3.OperationalError:
-            pass
-    except sqlite3.OperationalError:
-        pass
-
-    # جدول قديم من نظام تحويل رسائل SMS (مُستبدَل برفع صورة الإشعار + OCR).
-    # يبقى هنا فقط لقواعد البيانات المُرقّاة حتى لا نفقد سجلها التاريخي —
-    # لا شيء بالكود يكتب إليه بعد الآن.
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS sms_log (
-        id               INTEGER PRIMARY KEY AUTOINCREMENT,
-        operator_id      INTEGER NOT NULL,
-        raw_message      TEXT,
-        parsed_amount    REAL,
-        parsed_phone     TEXT,
-        matched_order_id INTEGER,
-        match_status     TEXT NOT NULL,
-        received_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sms_log_operator ON sms_log(operator_id, received_at)")
-
-    # ── سجل إيراد يومي دائم (revenue_log) ───────────────────────────────────
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS revenue_log (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        operator_id  INTEGER NOT NULL,
-        occurred_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        amount       REAL NOT NULL
-    )
-    ''')
-    # ملاحظة: تعبئة هذا الجدول من transactions تحتاج operator_id مربوطاً فعلياً
-    # بكل عملية — تحصل لاحقاً بعد اكتمال تهيئة المشغّل الافتراضي أدناه، وليس هنا
-
-    # حساب أدمن واحد لكل مشغّل
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS operator_admins (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        operator_id    INTEGER NOT NULL UNIQUE,
-        username       TEXT NOT NULL,
-        password_hash  TEXT NOT NULL,
-        FOREIGN KEY(operator_id) REFERENCES operators(id)
-    )
-    ''')
-
-    # حساب المطوّر (Superadmin) — منفصل تماماً عن حسابات المشغّلين
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS dev_admins (
-        id                 INTEGER PRIMARY KEY CHECK (id = 1),
-        username           TEXT NOT NULL,
-        password_hash      TEXT NOT NULL,
-        warning_dismissed  INTEGER DEFAULT 0
-    )
-    ''')
-
-    # ترقية: عمود لإخفاء تنبيه "كلمة المرور الافتراضية" — بدون هذا كان التنبيه
-    # يظهر بشكل ثابت في كل زيارة للوحة المطوّر لحين تغيير كلمة المرور فعلياً،
-    try:
-        cursor.execute("SELECT warning_dismissed FROM dev_admins LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE dev_admins ADD COLUMN warning_dismissed INTEGER DEFAULT 0")
-
-    # تنظيف: محرر SQL أُزيل نهائياً من لوحة المطوّر — نحذف عمود كلمة سره
-    # القديم لو كان موجوداً بقاعدة بيانات مُرقّاة من نسخة سابقة (يتطلب
-    # SQLite 3.35+ لدعم DROP COLUMN؛ الاستثناء يحمي أي نسخة أقدم فقط)
-    try:
-        cursor.execute("SELECT sql_password_hash FROM dev_admins LIMIT 1")
-        try:
-            cursor.execute("ALTER TABLE dev_admins DROP COLUMN sql_password_hash")
-        except sqlite3.OperationalError:
-            pass   # نسخة SQLite قديمة لا تدعم DROP COLUMN — العمود يبقى غير مُستخدَم بالكود بأي حال
-    except sqlite3.OperationalError:
-        pass   # العمود غير موجود أصلاً (تثبيت جديد)
-
-    # ── تهيئة أول مشغّل افتراضي (أول تشغيل فقط) ─────────────────────────────
-    # إذا لم يكن هناك أي مشغّل مسجّل بعد، ننشئ مشغّلاً افتراضياً بحساب أدمن
-    existing_operator = cursor.execute("SELECT id FROM operators LIMIT 1").fetchone()
-    if not existing_operator:
-        cursor.execute(
-            "INSERT INTO operators (slug, name, is_active) VALUES (?, ?, 1)",
-            ("default", "شبكة market للانترنت")
-        )
-        default_op_id = cursor.lastrowid
-
-        from werkzeug.security import generate_password_hash
-        cursor.execute(
-            "INSERT INTO operator_admins (operator_id, username, password_hash) VALUES (?, ?, ?)",
-            (default_op_id, "admin", generate_password_hash("2026"))
-        )
-
-        # ربط أي بيانات يتيمة (operator_id فارغ) بالمشغّل الافتراضي
-        cursor.execute("UPDATE vouchers SET operator_id=? WHERE operator_id IS NULL", (default_op_id,))
-        cursor.execute("UPDATE transactions SET operator_id=? WHERE operator_id IS NULL", (default_op_id,))
-        cursor.execute("UPDATE audit_log SET operator_id=? WHERE operator_id IS NULL", (default_op_id,))
-
-    # ── تعبئة lifetime_revenue و revenue_log من البيانات القديمة ───────────
-    cursor.execute('''
-        UPDATE operators SET lifetime_revenue = (
-            SELECT COALESCE(SUM(amount_paid), 0) FROM transactions
-            WHERE transactions.operator_id = operators.id
-        ) WHERE lifetime_revenue = 0
-    ''')
-    existing_log_rows = cursor.execute("SELECT COUNT(*) FROM revenue_log").fetchone()[0]
-    if existing_log_rows == 0:
-        existing_txns = cursor.execute(
-            "SELECT COUNT(*) FROM transactions WHERE operator_id IS NOT NULL"
-        ).fetchone()[0]
-        if existing_txns > 0:
-            cursor.execute('''
-                INSERT INTO revenue_log (operator_id, occurred_at, amount)
-                SELECT operator_id, created_at, amount_paid FROM transactions
-                WHERE operator_id IS NOT NULL
-            ''')
-
-    # ── إنشاء حساب المطوّر الافتراضي (أول تشغيل فقط) ───────────────────────
-    dev_existing = cursor.execute("SELECT id FROM dev_admins WHERE id=1").fetchone()
-    if not dev_existing:
-        from werkzeug.security import generate_password_hash
-        cursor.execute(
-            "INSERT INTO dev_admins (id, username, password_hash) VALUES (1, ?, ?)",
-            ("dev", generate_password_hash("ChangeMe#2026"))
-        )
-
-    # فهرس لتسريع ترقيم البطاقات لكل مشغّل على حدة (انظر vouchers-json)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_vouchers_operator ON vouchers(operator_id, id)")
-
-    # فهرس مركّب لاستعلام الحجز الأساسي بالدفع (checkout) الذي يبحث عن بطاقات
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_vouchers_lookup
-        ON vouchers(operator_id, status, price, profile, duration_hours)
-    ''')
-
-    conn.commit()
-    conn.close()
-
+    except Exception as e:
+        print("❌ خطأ أثناء تهيئة قاعدة البيانات:", e)
+        conn.rollback()
+    finally:
+        conn.close()
+        
 # تسجيل Blueprints
 app.register_blueprint(user_bp)
 app.register_blueprint(admin_bp)
