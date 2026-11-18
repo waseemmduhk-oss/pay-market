@@ -5,7 +5,7 @@ from flask import session, current_app, Blueprint
 # تحديد المسار المطلق للمشروع وقاعدة البيانات
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 DATABASE_PATH = os.path.join(BASE_DIR, 'hotspot_cards.db')
-BACKUP_DIR = os.path.join(BASE_DIR, 'backups')  # مجلد النسخ الاحتياطي المطلوب
+BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
 
 # التأكد من وجود مجلد النسخ الاحتياطي
 os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -20,9 +20,10 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-# إعدادات محاولات تسجيل الدخول والحظر
+# إعدادات النظام ولوحة المطور
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION = 300  # 5 دقائق
+LOW_STOCK_THRESHOLD = 10  # الحد الأدنى لتنبيه نفاد البطاقات
 
 # تعريف Blueprint الخاصة بالمطورين
 dev_bp = Blueprint('dev', __name__)
