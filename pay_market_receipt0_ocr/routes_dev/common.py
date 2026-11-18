@@ -2,16 +2,20 @@ import os
 import sqlite3
 from flask import session, current_app, Blueprint
 
-# تحديد اسم ملف قاعدة البيانات محلياً وبشكل مضمون داخل المجلد الحالي
-DATABASE = os.environ.get('DATABASE_URL', 'hotspot_cards.db')
+# تحديد المسار المطلق بدقة ليصبح ملف قاعدة البيانات دائماً داخل مجلد التطبيق الرئيسي
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+DATABASE_PATH = os.path.join(BASE_DIR, 'hotspot_cards.db')
+
+# استخدام متغير البيئة إذا وجد، وإلا استخدام المسار المطلق المضمون
+DATABASE = os.environ.get('DATABASE_URL', DATABASE_PATH)
 if DATABASE and DATABASE.startswith("postgres://"):
     DATABASE = DATABASE.replace("postgres://", "postgresql://", 1)
 
-BACKUP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../backups'))
+BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
 def get_db_connection():
-    """فتح اتصال آمن ومحلي مع قاعدة البيانات"""
+    """فتح اتصال آمن مع قاعدة البيانات باستخدام مسار مطلق موثوق"""
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
