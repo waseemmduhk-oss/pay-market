@@ -408,5 +408,5 @@ def not_found(e):
 </body></html>''', 404
 
 if __name__ == '__main__':
-    init_db_auto()
+    init_db_auto()  # <--- هذا السطر هو الذي يقوم بإنشاء جميع الجداول تلقائياً عند الإقلاع
     app.run(host='0.0.0.0', debug=False, port=5000)
