@@ -143,9 +143,6 @@ def init_db_auto():
         cursor.execute("DROP TABLE IF EXISTS vouchers")
         cursor.execute("DROP TABLE IF EXISTS transactions")
 
-import sqlite3
-from werkzeug.security import generate_password_hash
-
 try:
     conn = sqlite3.connect('hotspot_cards.db')
     cursor = conn.cursor()
@@ -169,7 +166,7 @@ try:
         )
     """)
     
-    # 3. جدول المشغلين مع إضافة عمود logo_filename وكافة الأعمدة الأخرى
+    # 3. جدول المشغلين
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS operators (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -209,20 +206,23 @@ try:
         )
     """)
     
-    # 5. جدول البطاقات والكروت
+    # 5. جدول البطاقات والكروت معافة الأعمدة المطلوبة (username, password, seq, etc.)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS vouchers (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
             operator_id INTEGER,
+            username TEXT,
+            password TEXT,
             code TEXT, 
             price REAL, 
             status TEXT,
             profile TEXT,
-            duration_hours INTEGER
+            duration_hours INTEGER,
+            seq INTEGER
         )
     """)
     
-    voucher_columns = ["operator_id", "profile", "duration_hours", "price", "status"]
+    voucher_columns = ["operator_id", "username", "password", "code", "price", "status", "profile", "duration_hours", "seq"]
     for col in voucher_columns:
         try:
             cursor.execute(f"ALTER TABLE vouchers ADD COLUMN {col} TEXT")
@@ -288,7 +288,7 @@ try:
     
     conn.commit()
     conn.close()
-    print("Database hotspot_cards.db initialized successfully with logo_filename.")
+    print("Database hotspot_cards.db initialized successfully with vouchers columns.")
     
 except Exception as e:
     print("DB Init Error:", e)
