@@ -407,6 +407,11 @@ def not_found(e):
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </body></html>''', 404
 
+# تنفيذ دالة التهيئة فوراً عند تشغيل أو استيراد التطبيق (لكي تعمل مع Gunicorn على Render)
+try:
+    init_db_auto()
+except Exception as _e:
+    print("Startup DB Init Warning:", _e)
+
 if __name__ == '__main__':
-    init_db_auto()  # <--- هذا السطر هو الذي يقوم بإنشاء جميع الجداول تلقائياً عند الإقلاع
     app.run(host='0.0.0.0', debug=False, port=5000)
