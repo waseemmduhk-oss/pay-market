@@ -158,4 +158,3 @@ def dev_system_health():
         failed_logins_24h=failed_logins_24h,
         python_version=sys.version.split()[0], flask_version=flask.__version__,
         sqlite_version=sqlite3.sqlite_version, platform_info=platform.platform())
-
