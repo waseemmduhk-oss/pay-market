@@ -664,7 +664,7 @@ def account(slug):
 
     conn = get_db_connection()
     all_rows = conn.execute('''
-        SELECT t.id AS tid, t.transaction_id, t.created_at, v.username, v.password, v.price, v.profile,
+        SELECT t.id AS tid, t.id AS transaction_id, t.created_at, v.username, v.password, v.price, v.profile,
                v.duration_hours, COALESCE(t.hidden_by_customer, 0) AS hidden
         FROM transactions t JOIN vouchers v ON t.voucher_id = v.id
         WHERE t.customer_phone = ? AND t.operator_id = ?
