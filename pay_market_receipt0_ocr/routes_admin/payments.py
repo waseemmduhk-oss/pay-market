@@ -605,4 +605,4 @@ def admin_login_as_customer(slug, customer_id):
     session['customer_phone'] = cust['phone']
     session['customer_operator_id'] = operator_id
     write_audit("ADMIN_LOGIN_AS_CUSTOMER", f"دخول مباشر بحساب الزبون {cust['phone']}", operator_id=operator_id)
-    return redirect(url_for('user.user_dashboard', slug=slug))
+    return redirect(url_for('user.account', slug=slug))
