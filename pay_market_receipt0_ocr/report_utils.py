@@ -29,7 +29,7 @@ def _month_bounds(year, month):
 def _xlsx_safe(value):
     """
     حماية من "CSV/Excel Formula Injection": لو قيمة أي خلية تبدأ بـ = أو + أو
-    - أو @، برامج زي Excel ممكن تفسّرها كصيغة (formula) بدل نص عادي عند فتح
+- أو @، برامج زي Excel ممكن تفسّرها كصيغة (formula) بدل نص عادي عند فتح
     الملف — وهاي ممكن تُستغل لتسريب بيانات أو تنفيذ أوامر (خصوصاً بصيغ DDE
     القديمة). كل الحقول المصدَّرة هون (هاتف/كرت/رمز محفظة) مُتحقَّق من
     صيغتها الرقمية بأماكن تانية بالكود حالياً، لكن هاي طبقة حماية إضافية لو
@@ -46,8 +46,8 @@ def _xlsx_safe(value):
 def build_monthly_report_workbook(conn, year, month, operator_id=None):
     """
     يبني ملف Excel لتقرير شهر معيّن.
-    - لو تم تمرير operator_id: التقرير خاص بهذا المشغّل فقط (بدون عمود اسم المشغّل).
-    - لو operator_id=None: تقرير مجمّع لكل المشغّلين (مع عمود اسم المشغّل)، متاح لحساب المطوّر فقط.
+- لو تم تمرير operator_id: التقرير خاص بهذا المشغّل فقط (بدون عمود اسم المشغّل).
+- لو operator_id=None: تقرير مجمّع لكل المشغّلين (مع عمود اسم المشغّل)، متاح لحساب المطوّر فقط.
     يرجّع bytes جاهزة للتنزيل.
     """
     import openpyxl
@@ -55,7 +55,7 @@ def build_monthly_report_workbook(conn, year, month, operator_id=None):
 
     start, end = _month_bounds(year, month)
 
-   base_query = '''
+    base_query = '''
         SELECT o.name AS operator_name, t.id AS transaction_id, t.customer_phone, t.wallet_code,
                t.amount_paid, t.created_at, v.username, v.password, v.price, v.profile
         FROM transactions t
