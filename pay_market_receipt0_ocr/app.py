@@ -289,6 +289,21 @@ def init_db_auto():
         )
         ''')
 
+        # ترقية جدول المعاملات (Transactions) تلقائياً إن كانت الأعمدة غير موجودة
+        tx_cols = {
+            row[1]
+            for row in cursor.execute("PRAGMA table_info(transactions)").fetchall()
+        }
+        tx_migrations = [
+            ("customer_phone", "TEXT"),
+            ("voucher_id", "INTEGER"),
+            ("hidden_by_customer", "INTEGER DEFAULT 0"),
+            ("transaction_id", "TEXT"),
+        ]
+        for col_name, col_def in tx_migrations:
+            if col_name not in tx_cols:
+                cursor.execute(f"ALTER TABLE transactions ADD COLUMN {col_name} {col_def}")
+
         # ── إنشاء الفهارس (Indexes) لسرعة الأداء ───────────────────────────
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_vouchers_operator ON vouchers(operator_id, id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_vouchers_lookup ON vouchers(operator_id, status, price, profile, duration_hours)")
