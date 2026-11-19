@@ -27,6 +27,17 @@ def init_db_if_not_exists():
         cursor.execute("CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, actor TEXT, action TEXT NOT NULL, details TEXT, ip_address TEXT, event_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         cursor.execute("CREATE TABLE IF NOT EXISTS sms_log (id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER NOT NULL, raw_message TEXT, parsed_amount REAL, parsed_phone TEXT, matched_order_id INTEGER, match_status TEXT NOT NULL, received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
 
+        # ترقية جدول المعاملات تلقائياً لإضافة الأعمدة المطلوبة في التقارير وصفحة "كروتي"
+        tx_cols = {row[1] for row in cursor.execute("PRAGMA table_info(transactions)").fetchall()}
+        for col_name, col_def in [
+            ("customer_phone", "TEXT"),
+            ("voucher_id", "INTEGER"),
+            ("hidden_by_customer", "INTEGER DEFAULT 0"),
+            ("transaction_id", "TEXT"),
+        ]:
+            if col_name not in tx_cols:
+                cursor.execute(f"ALTER TABLE transactions ADD COLUMN {col_name} {col_def}")
+                
         # إنشاء حساب المطور الافتراضي لو لم يكن موجوداً
         dev_existing = cursor.execute("SELECT id FROM dev_admins WHERE id=1").fetchone()
         if not dev_existing:
