@@ -55,14 +55,15 @@ def build_monthly_report_workbook(conn, year, month, operator_id=None):
 
     start, end = _month_bounds(year, month)
 
-    base_query = '''
-        SELECT o.name AS operator_name, t.transaction_id, t.customer_phone, t.wallet_code,
+   base_query = '''
+        SELECT o.name AS operator_name, t.id AS transaction_id, t.customer_phone, t.wallet_code,
                t.amount_paid, t.created_at, v.username, v.password, v.price, v.profile
         FROM transactions t
         JOIN vouchers v ON t.voucher_id = v.id
         JOIN operators o ON t.operator_id = o.id
         WHERE t.created_at >= ? AND t.created_at < ?
     '''
+
     params = [start, end]
     if operator_id is not None:
         base_query += ' AND t.operator_id = ?'
