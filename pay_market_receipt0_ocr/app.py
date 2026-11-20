@@ -1,5 +1,4 @@
 from flask import Flask, session, redirect, url_for, request, abort
-import sqlite3
 import os
 import re
 import secrets
@@ -8,6 +7,15 @@ import json
 from flask.sessions import SecureCookieSessionInterface
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash
+
+from db_layer import (
+    BASE_DIR,
+    SQLITE_PATH as DATABASE,
+    DATABASE_URL,
+    IS_POSTGRES,
+    get_db_connection,
+    add_column_if_missing,
+)
 
 # استيراد الـ Blueprints
 from routes_user import user_bp
@@ -25,7 +33,7 @@ if _PROXY_LAYERS > 0:
 
 # ── مفتاح سري قوي: يُقرأ من متغير البيئة، أو من ملف محلي، أو يُولَّد ويُحفظ تلقائياً ──
 # هذا يضمن أن الجلسات لا تنتهي عند كل إعادة تشغيل
-_SECRET_KEY_FILE = 'secret.key'
+_SECRET_KEY_FILE = os.path.join(BASE_DIR, 'secret.key')
 def _load_or_create_secret_key():
     if os.environ.get("SECRET_KEY"):
         return os.environ["SECRET_KEY"]
@@ -62,16 +70,6 @@ app.session_interface = ScopedSessionInterface()
 
 #حد حجم الملفات المرفوعة (5MB كحد أقصى)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024    # 5 ميغابايت
-
-# تحديد المسار المطلق لمجلد المشروع لتجنب ضياع ملف قاعدة البيانات
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
-# إذا لم يتوفر رابط سحابي، استخدم مساراً مطلقاً لملف الـ SQLite داخل مجلد المشروع
-DATABASE = DATABASE_URL if DATABASE_URL else os.path.join(BASE_DIR, 'hotspot_cards.db')
 
 #CSRF PROTECTION — توليد وفحص التوكن# ── CSRF ────────────────────────────────────────────────────────────────────
 def generate_csrf_token():
@@ -135,7 +133,7 @@ def add_security_headers(response):
 
 def init_db_auto():
     """تهيئة قاعدة البيانات وتحديث الهيكل تلقائياً بشكل شامل وآمن"""
-    conn = sqlite3.connect(DATABASE)
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
@@ -290,10 +288,6 @@ def init_db_auto():
         ''')
 
         # ترقية جدول المعاملات (Transactions) تلقائياً إن كانت الأعمدة غير موجودة
-        tx_cols = {
-            row[1]
-            for row in cursor.execute("PRAGMA table_info(transactions)").fetchall()
-        }
         tx_migrations = [
             ("customer_phone", "TEXT"),
             ("voucher_id", "INTEGER"),
@@ -301,8 +295,7 @@ def init_db_auto():
             ("transaction_id", "TEXT"),
         ]
         for col_name, col_def in tx_migrations:
-            if col_name not in tx_cols:
-                cursor.execute(f"ALTER TABLE transactions ADD COLUMN {col_name} {col_def}")
+            add_column_if_missing(conn, "transactions", col_name, col_def)
 
         # ── إنشاء الفهارس (Indexes) لسرعة الأداء ───────────────────────────
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_vouchers_operator ON vouchers(operator_id, id)")
@@ -317,21 +310,25 @@ def init_db_auto():
         # أ. حساب المشغل الافتراضي
         existing_operator = cursor.execute("SELECT id FROM operators LIMIT 1").fetchone()
         if not existing_operator:
-            cursor.execute(
+            insert_op = cursor.execute(
                 "INSERT INTO operators (slug, name, is_active) VALUES (?, ?, 1)",
                 ("default", "شبكة market للانترنت")
             )
-            default_op_id = cursor.lastrowid
+            default_op_id = insert_op.lastrowid or cursor.lastrowid
+            if default_op_id is None:
+                op_row = cursor.execute("SELECT id FROM operators WHERE slug = ?", ("default",)).fetchone()
+                default_op_id = op_row["id"] if op_row else None
 
-            cursor.execute(
-                "INSERT INTO operator_admins (operator_id, username, password_hash) VALUES (?, ?, ?)",
-                (default_op_id, "admin", generate_password_hash("2026"))
-            )
+            if default_op_id is not None:
+                cursor.execute(
+                    "INSERT INTO operator_admins (operator_id, username, password_hash) VALUES (?, ?, ?)",
+                    (default_op_id, "admin", generate_password_hash("2026"))
+                )
 
-            # ربط أي بيانات يتيمة بالمشغل الافتراضي
-            cursor.execute("UPDATE vouchers SET operator_id=? WHERE operator_id IS NULL", (default_op_id,))
-            cursor.execute("UPDATE transactions SET operator_id=? WHERE operator_id IS NULL", (default_op_id,))
-            cursor.execute("UPDATE audit_log SET operator_id=? WHERE operator_id IS NULL", (default_op_id,))
+                # ربط أي بيانات يتيمة بالمشغل الافتراضي
+                cursor.execute("UPDATE vouchers SET operator_id=? WHERE operator_id IS NULL", (default_op_id,))
+                cursor.execute("UPDATE transactions SET operator_id=? WHERE operator_id IS NULL", (default_op_id,))
+                cursor.execute("UPDATE audit_log SET operator_id=? WHERE operator_id IS NULL", (default_op_id,))
 
         # ب. حساب المطور الافتراضي (Superadmin)
         dev_existing = cursor.execute("SELECT id FROM dev_admins WHERE id=1").fetchone()
