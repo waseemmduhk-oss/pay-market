@@ -258,21 +258,21 @@ def admin_payments(slug):
         "SELECT * FROM pending_orders WHERE operator_id=? ORDER BY id DESC LIMIT 100", (operator_id,)
     ).fetchall()
     stats = {
-        'pending': conn.execute(
-            "SELECT COUNT(*) FROM pending_orders WHERE operator_id=? AND status='pending'", (operator_id,)
-        ).fetchone()[0],
-        'confirmed_today': conn.execute(
-            "SELECT COUNT(*) FROM pending_orders WHERE operator_id=? AND status='confirmed' AND SUBSTR(CAST(confirmed_at AS TEXT), 1, 10) = CURRENT_DATE",
-            (operator_id,)
-        ).fetchone()[0],
-        'revenue_today': conn.execute(
-            "SELECT COALESCE(SUM(exact_amount),0) FROM pending_orders WHERE operator_id=? AND status='confirmed' AND SUBSTR(CAST(confirmed_at AS TEXT), 1, 10) = CURRENT_DATE",
-            (operator_id,)
-        ).fetchone()[0],
-        'needs_review': conn.execute(
-            "SELECT COUNT(*) FROM pending_orders WHERE operator_id=? AND status='review'", (operator_id,)
-        ).fetchone()[0],
-    }
+    'pending': conn.execute(
+        "SELECT COUNT(*) FROM pending_orders WHERE operator_id=? AND status='pending'", (operator_id,)
+    ).fetchone()[0],
+    'confirmed_today': conn.execute(
+        "SELECT COUNT(*) FROM pending_orders WHERE operator_id=? AND status='confirmed' AND SUBSTR(CAST(confirmed_at AS TEXT), 1, 10) = CAST(CURRENT_DATE AS TEXT)",
+        (operator_id,)
+    ).fetchone()[0],
+    'revenue_today': conn.execute(
+        "SELECT COALESCE(SUM(exact_amount),0) FROM pending_orders WHERE operator_id=? AND status='confirmed' AND SUBSTR(CAST(confirmed_at AS TEXT), 1, 10) = CAST(CURRENT_DATE AS TEXT)",
+        (operator_id,)
+    ).fetchone()[0],
+    'needs_review': conn.execute(
+        "SELECT COUNT(*) FROM pending_orders WHERE operator_id=? AND status='review'", (operator_id,)
+    ).fetchone()[0],
+}
     search_date = request.args.get('search_date', '').strip()
     revenue_search = None
     if search_date:
