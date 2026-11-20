@@ -16,58 +16,60 @@ def dev_dashboard():
     if not _require_dev_login():
         return redirect(url_for('dev.dev_login'))
     conn = get_db_connection()
-    operators = conn.execute('SELECT * FROM operators ORDER BY id ASC').fetchall()
-    stats = {}
-    for op in operators:
-        total = conn.execute('SELECT COUNT(*) FROM vouchers WHERE operator_id=?', (op['id'],)).fetchone()[0]
-        avail = conn.execute(
-            "SELECT COUNT(*) FROM vouchers WHERE operator_id=? AND status='available'",
-            (op['id'],),
-        ).fetchone()[0]
-        sold = conn.execute(
-            "SELECT COUNT(*) FROM vouchers WHERE operator_id=? AND status='sold'",
-            (op['id'],),
-        ).fetchone()[0]
-        # نعرض الإيراد التراكمي المحفوظ على operators.lifetime_revenue
-        revenue = op['lifetime_revenue']
-        admin_row = conn.execute('SELECT username FROM operator_admins WHERE operator_id=?', (op['id'],)).fetchone()
-        low_stock_count = conn.execute('''
-            SELECT COUNT(*) FROM (
-                SELECT price, COUNT(*) AS c FROM vouchers
-                WHERE operator_id=? AND status='available'
-                GROUP BY price, profile
-                HAVING COUNT(*) < ?
-            ) AS low_stock_sub
-        ''', (op['id'], LOW_STOCK_THRESHOLD)).fetchone()[0]
-        stats[op['id']] = {
-            'total': total, 'available': avail, 'sold': sold,
-            'revenue': revenue, 'admin_username': admin_row['username'] if admin_row else None,
-            'low_stock_count': low_stock_count
-        }
-    global_total   = conn.execute('SELECT COUNT(*) FROM vouchers').fetchone()[0]
-    global_revenue = conn.execute('SELECT COALESCE(SUM(lifetime_revenue),0) FROM operators').fetchone()[0]
-
-    # ── تحسين الرسم البياني: يمكن تصفيته حسب مشغّل معيّن ومدى الأيام ──
-    chart_operator_raw = request.args.get('chart_operator', '').strip()
-    chart_operator_id  = int(chart_operator_raw) if chart_operator_raw.isdigit() else None
     try:
-        chart_days = int(request.args.get('chart_days', 30))
-    except ValueError:
-        chart_days = 30
-    chart_days = chart_days if chart_days in (7, 30, 90) else 30
+        operators = conn.execute('SELECT * FROM operators ORDER BY id ASC').fetchall()
+        stats = {}
+        for op in operators:
+            total = conn.execute('SELECT COUNT(*) FROM vouchers WHERE operator_id=?', (op['id'],)).fetchone()[0]
+            avail = conn.execute(
+                "SELECT COUNT(*) FROM vouchers WHERE operator_id=? AND status='available'",
+                (op['id'],),
+            ).fetchone()[0]
+            sold = conn.execute(
+                "SELECT COUNT(*) FROM vouchers WHERE operator_id=? AND status='sold'",
+                (op['id'],),
+            ).fetchone()[0]
+            # نعرض الإيراد التراكمي المحفوظ على operators.lifetime_revenue
+            revenue = op['lifetime_revenue']
+            admin_row = conn.execute('SELECT username FROM operator_admins WHERE operator_id=?', (op['id'],)).fetchone()
+            low_stock_count = conn.execute('''
+                SELECT COUNT(*) FROM (
+                    SELECT price, COUNT(*) AS c FROM vouchers
+                    WHERE operator_id=? AND status='available'
+                    GROUP BY price, profile
+                    HAVING COUNT(*) < ?
+                ) AS low_stock_sub
+            ''', (op['id'], LOW_STOCK_THRESHOLD)).fetchone()[0]
+            stats[op['id']] = {
+                'total': total, 'available': avail, 'sold': sold,
+                'revenue': revenue, 'admin_username': admin_row['username'] if admin_row else None,
+                'low_stock_count': low_stock_count
+            }
+        global_total   = conn.execute('SELECT COUNT(*) FROM vouchers').fetchone()[0]
+        global_revenue = conn.execute('SELECT COALESCE(SUM(lifetime_revenue),0) FROM operators').fetchone()[0]
 
-    revenue_series = report_utils.daily_revenue_series(conn, operator_id=chart_operator_id, days=chart_days)
-    revenue_period_total = round(sum(p['revenue'] for p in revenue_series), 2)
-    revenue_period_avg   = round(revenue_period_total / chart_days, 2) if chart_days else 0
-    chart_operator_name  = None
-    if chart_operator_id:
-        op_row = conn.execute('SELECT name FROM operators WHERE id=?', (chart_operator_id,)).fetchone()
-        chart_operator_name = op_row['name'] if op_row else None
+        # ── تحسين الرسم البياني: يمكن تصفيته حسب مشغّل معيّن ومدى الأيام ──
+        chart_operator_raw = request.args.get('chart_operator', '').strip()
+        chart_operator_id  = int(chart_operator_raw) if chart_operator_raw.isdigit() else None
+        try:
+            chart_days = int(request.args.get('chart_days', 30))
+        except ValueError:
+            chart_days = 30
+        chart_days = chart_days if chart_days in (7, 30, 90) else 30
 
-    # تنبيه أمني: هل لسه المطوّر على كلمة المرور الافتراضية المولّدة تلقائياً؟
-    dev_row = conn.execute('SELECT password_hash FROM dev_admins WHERE id=1').fetchone()
-    using_default_password = bool(dev_row and check_password_hash(dev_row['password_hash'], 'ChangeMe#2026'))
-    conn.close()
+        revenue_series = report_utils.daily_revenue_series(conn, operator_id=chart_operator_id, days=chart_days)
+        revenue_period_total = round(sum(p['revenue'] for p in revenue_series), 2)
+        revenue_period_avg   = round(revenue_period_total / chart_days, 2) if chart_days else 0
+        chart_operator_name  = None
+        if chart_operator_id:
+            op_row = conn.execute('SELECT name FROM operators WHERE id=?', (chart_operator_id,)).fetchone()
+            chart_operator_name = op_row['name'] if op_row else None
+
+        # تنبيه أمني: هل لسه المطوّر على كلمة المرور الافتراضية المولّدة تلقائياً؟
+        dev_row = conn.execute('SELECT password_hash FROM dev_admins WHERE id=1').fetchone()
+        using_default_password = bool(dev_row and check_password_hash(dev_row['password_hash'], 'ChangeMe#2026'))
+    finally:
+        conn.close()
 
     login_time        = session.get('login_time', time.time())
     session_remaining = max(0, int(1800 - (time.time() - login_time)))
@@ -124,56 +126,78 @@ def dev_system_health():
     if not _require_dev_login():
         return redirect(url_for('dev.dev_login'))
     conn = get_db_connection()
+    try:
+        if IS_POSTGRES:
+            size_bytes = conn.execute('SELECT pg_database_size(current_database())').fetchone()[0] or 0
+            db_size_mb = round(size_bytes / (1024 * 1024), 2)
+            db_engine_version = conn.execute('SHOW server_version').fetchone()[0]
+        else:
+            db_size_mb = round(os.path.getsize(DATABASE) / (1024 * 1024), 2) if os.path.exists(DATABASE) else 0
+            db_engine_version = sqlite3.sqlite_version
 
-    if IS_POSTGRES:
-        size_bytes = conn.execute('SELECT pg_database_size(current_database())').fetchone()[0] or 0
-        db_size_mb = round(size_bytes / (1024 * 1024), 2)
-        db_engine_version = conn.execute('SHOW server_version').fetchone()[0]
-    else:
-        db_size_mb = round(os.path.getsize(DATABASE) / (1024 * 1024), 2) if os.path.exists(DATABASE) else 0
-        db_engine_version = sqlite3.sqlite_version
+        disk = shutil.disk_usage('.')
+        disk_free_gb  = round(disk.free  / (1024 ** 3), 2)
+        disk_total_gb = round(disk.total / (1024 ** 3), 2)
+        disk_used_pct = round((disk.used / disk.total) * 100, 1) if disk.total else 0
 
-    disk = shutil.disk_usage('.')
-    disk_free_gb  = round(disk.free  / (1024 ** 3), 2)
-    disk_total_gb = round(disk.total / (1024 ** 3), 2)
-    disk_used_pct = round((disk.used / disk.total) * 100, 1) if disk.total else 0
+        backups_count = 0
+        backups_size_mb = 0.0
+        last_backup_time = None
+        days_since_backup = None
+        try:
+            b_rows = conn.execute(
+                'SELECT created_at, size_bytes FROM db_backups ORDER BY id DESC'
+            ).fetchall()
+            backups_count = len(b_rows)
+            backups_size_mb = round(
+                sum(int(r['size_bytes'] or 0) for r in b_rows) / (1024 * 1024), 2
+            )
+            if b_rows:
+                newest_dt = b_rows[0]['created_at']
+                if isinstance(newest_dt, datetime):
+                    last_backup_time = newest_dt
+                elif newest_dt:
+                    last_backup_time = datetime.fromisoformat(str(newest_dt)[:19])
+                if last_backup_time:
+                    days_since_backup = (datetime.now() - last_backup_time).days
+        except Exception:
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            backup_files = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.db')]
+            backups_size_mb = round(sum(os.path.getsize(os.path.join(BACKUP_DIR, f)) for f in backup_files) / (1024 * 1024), 2)
+            backups_count = len(backup_files)
+            if backup_files:
+                newest = max(backup_files, key=lambda f: os.path.getmtime(os.path.join(BACKUP_DIR, f)))
+                last_backup_time = datetime.fromtimestamp(os.path.getmtime(os.path.join(BACKUP_DIR, newest)))
+                days_since_backup = (datetime.now() - last_backup_time).days
 
-    os.makedirs(BACKUP_DIR, exist_ok=True)
-    backup_files = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.db')]
-    backups_size_mb = round(sum(os.path.getsize(os.path.join(BACKUP_DIR, f)) for f in backup_files) / (1024 * 1024), 2)
-    last_backup_time = None
-    if backup_files:
-        newest = max(backup_files, key=lambda f: os.path.getmtime(os.path.join(BACKUP_DIR, f)))
-        last_backup_time = datetime.fromtimestamp(os.path.getmtime(os.path.join(BACKUP_DIR, newest)))
-    days_since_backup = (datetime.now() - last_backup_time).days if last_backup_time else None
+        operators_active   = conn.execute('SELECT COUNT(*) FROM operators WHERE is_active=1').fetchone()[0]
+        operators_inactive = conn.execute('SELECT COUNT(*) FROM operators WHERE is_active=0').fetchone()[0]
+        total_vouchers     = conn.execute('SELECT COUNT(*) FROM vouchers').fetchone()[0]
+        total_transactions = conn.execute('SELECT COUNT(*) FROM transactions').fetchone()[0]
+        total_audit_rows   = conn.execute('SELECT COUNT(*) FROM audit_log').fetchone()[0]
 
-    operators_active   = conn.execute('SELECT COUNT(*) FROM operators WHERE is_active=1').fetchone()[0]
-    operators_inactive = conn.execute('SELECT COUNT(*) FROM operators WHERE is_active=0').fetchone()[0]
-    total_vouchers     = conn.execute('SELECT COUNT(*) FROM vouchers').fetchone()[0]
-    total_transactions = conn.execute('SELECT COUNT(*) FROM transactions').fetchone()[0]
-    total_audit_rows   = conn.execute('SELECT COUNT(*) FROM audit_log').fetchone()[0]
+        dev_row = conn.execute('SELECT password_hash FROM dev_admins WHERE id=1').fetchone()
+        using_default_password = bool(dev_row and check_password_hash(dev_row['password_hash'], 'ChangeMe#2026'))
 
-    dev_row = conn.execute('SELECT password_hash FROM dev_admins WHERE id=1').fetchone()
-    using_default_password = bool(dev_row and check_password_hash(dev_row['password_hash'], 'ChangeMe#2026'))
-
-    # عدد محاولات الدخول الفاشلة بآخر 24 ساعة (كل اللوحات مجمّعة)
-    if IS_POSTGRES:
-        failed_logins_24h = conn.execute('''
-            SELECT COUNT(*) FROM audit_log
-            WHERE action IN ('LOGIN_FAIL','LOGIN_LOCKOUT','DEV_LOGIN_FAIL','DEV_LOGIN_LOCKOUT')
-            AND event_time >= NOW() - INTERVAL '1 day'
-        ''').fetchone()[0]
-    else:
-        failed_logins_24h = conn.execute('''
-            SELECT COUNT(*) FROM audit_log
-            WHERE action IN ('LOGIN_FAIL','LOGIN_LOCKOUT','DEV_LOGIN_FAIL','DEV_LOGIN_LOCKOUT')
-            AND event_time >= datetime('now', '-1 day')
-        ''').fetchone()[0]
-    conn.close()
+        # عدد محاولات الدخول الفاشلة بآخر 24 ساعة (كل اللوحات مجمّعة)
+        if IS_POSTGRES:
+            failed_logins_24h = conn.execute('''
+                SELECT COUNT(*) FROM audit_log
+                WHERE action IN ('LOGIN_FAIL','LOGIN_LOCKOUT','DEV_LOGIN_FAIL','DEV_LOGIN_LOCKOUT')
+                AND event_time >= NOW() - INTERVAL '1 day'
+            ''').fetchone()[0]
+        else:
+            failed_logins_24h = conn.execute('''
+                SELECT COUNT(*) FROM audit_log
+                WHERE action IN ('LOGIN_FAIL','LOGIN_LOCKOUT','DEV_LOGIN_FAIL','DEV_LOGIN_LOCKOUT')
+                AND event_time >= datetime('now', '-1 day')
+            ''').fetchone()[0]
+    finally:
+        conn.close()
 
     return render_template('dev_system_health.html',
         db_size_mb=db_size_mb, disk_free_gb=disk_free_gb, disk_total_gb=disk_total_gb, disk_used_pct=disk_used_pct,
-        backups_count=len(backup_files), backups_size_mb=backups_size_mb,
+        backups_count=backups_count, backups_size_mb=backups_size_mb,
         last_backup_time=last_backup_time, days_since_backup=days_since_backup,
         operators_active=operators_active, operators_inactive=operators_inactive,
         total_vouchers=total_vouchers, total_transactions=total_transactions, total_audit_rows=total_audit_rows,
