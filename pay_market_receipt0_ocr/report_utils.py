@@ -4,7 +4,8 @@ report_utils.py
 شبكة واحدة) ولوحة المطوّر (لتقرير شبكة واحدة أو كل الشبكات مجمّعة معاً).
 """
 import io
-from datetime import datetime
+from datetime import datetime, date, timedelta
+from db_layer import IS_POSTGRES
 
 
 ARABIC_MONTHS = {
@@ -144,20 +145,34 @@ def daily_revenue_series(conn, operator_id=None, days=30):
     البطاقات المصفّرة من لوحة المشغّل، مما كان يجعل الرسم البياني يتغيّر
     بأثر رجعي ويناقض رقم "إجمالي الإيرادات" الثابت المعروض بجانبه.
     """
-    query = '''
-        SELECT date(occurred_at) AS d, COALESCE(SUM(amount), 0) AS rev
-        FROM revenue_log
-        WHERE occurred_at >= date('now', ?)
-    '''
-    params = [f'-{days - 1} days']
-    if operator_id is not None:
-        query += ' AND operator_id = ?'
-        params.append(operator_id)
-    query += ' GROUP BY date(occurred_at)'
+    if IS_POSTGRES:
+        query = '''
+            SELECT (occurred_at)::date AS d, COALESCE(SUM(amount), 0) AS rev
+            FROM revenue_log
+            WHERE (occurred_at)::date >= (CURRENT_DATE - (? * INTERVAL '1 day'))
+        '''
+        params = [days - 1]
+        if operator_id is not None:
+            query += ' AND operator_id = ?'
+            params.append(operator_id)
+        query += ' GROUP BY (occurred_at)::date'
+    else:
+        query = '''
+            SELECT date(occurred_at) AS d, COALESCE(SUM(amount), 0) AS rev
+            FROM revenue_log
+            WHERE occurred_at >= date('now', ?)
+        '''
+        params = [f'-{days - 1} days']
+        if operator_id is not None:
+            query += ' AND operator_id = ?'
+            params.append(operator_id)
+        query += ' GROUP BY date(occurred_at)'
 
-    rows = {r['d']: r['rev'] for r in conn.execute(query, params).fetchall()}
+    rows = {
+        (r['d'].isoformat() if hasattr(r['d'], 'isoformat') else str(r['d'])[:10]): float(r['rev'] or 0)
+        for r in conn.execute(query, params).fetchall()
+    }
 
-    from datetime import date, timedelta
     today = date.today()
     series = []
     for i in range(days - 1, -1, -1):
