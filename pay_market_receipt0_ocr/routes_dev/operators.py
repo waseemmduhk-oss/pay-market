@@ -1,4 +1,4 @@
-from flask import request, session, redirect, url_for, current_app, render_template
+from flask import request, session, redirect, url_for, current_app
 import re
 from werkzeug.security import generate_password_hash
 from .common import dev_bp, get_db_connection, write_dev_audit, _require_dev_login
@@ -30,14 +30,20 @@ def create_operator():
         existing = conn.execute('SELECT id FROM operators WHERE slug=?', (slug,)).fetchone()
         if existing:
             session['op_message'] = ('error', f'الرابط "{slug}" مستخدَم مسبقاً لمشغّل آخر.')
-            conn.close()
             return redirect(url_for('dev.dev_dashboard'))
 
         cur = conn.execute(
             'INSERT INTO operators (slug, name, jawwal_pay_number, support_phone, is_active) VALUES (?,?,?,?,1)',
             (slug, name, jawwal_number, support_phone)
         )
-        op_id = cur.lastrowid
+        op_id = getattr(cur, 'lastrowid', None)
+        if not op_id:
+            op_row = conn.execute('SELECT id FROM operators WHERE slug=?', (slug,)).fetchone()
+            op_id = op_row['id'] if op_row else None
+
+        if not op_id:
+            raise RuntimeError("تعذّر الحصول على معرّف المشغّل الجديد بعد الإدخال.")
+
         conn.execute(
             'INSERT INTO operator_admins (operator_id, username, password_hash) VALUES (?,?,?)',
             (op_id, admin_user, generate_password_hash(admin_pass))
@@ -138,14 +144,19 @@ def toggle_operator(op_id):
         return redirect(url_for('dev.dev_login'))
     current_app.validate_csrf()
     conn = get_db_connection()
-    row  = conn.execute('SELECT is_active, name FROM operators WHERE id=?', (op_id,)).fetchone()
-    if row:
-        new_state = 0 if row['is_active'] else 1
-        conn.execute('UPDATE operators SET is_active=? WHERE id=?', (new_state, op_id))
-        conn.commit()
-        write_dev_audit("OPERATOR_TOGGLED", f"id={op_id} name={row['name']} -> {'مفعّل' if new_state else 'معطّل'}")
-        session['op_message'] = ('success', f'تم {"تفعيل" if new_state else "تعطيل"} المشغّل "{row["name"]}".')
-    conn.close()
+    try:
+        row = conn.execute('SELECT is_active, name FROM operators WHERE id=?', (op_id,)).fetchone()
+        if row:
+            new_state = 0 if row['is_active'] else 1
+            conn.execute('UPDATE operators SET is_active=? WHERE id=?', (new_state, op_id))
+            conn.commit()
+            write_dev_audit("OPERATOR_TOGGLED", f"id={op_id} name={row['name']} -> {'مفعّل' if new_state else 'معطّل'}")
+            session['op_message'] = ('success', f'تم {"تفعيل" if new_state else "تعطيل"} المشغّل "{row["name"]}".')
+    except Exception as ex:
+        conn.rollback()
+        session['op_message'] = ('error', f'فشل التحديث: {ex}')
+    finally:
+        conn.close()
     return redirect(url_for('dev.dev_dashboard'))
 
 # ── إعادة تعيين كلمة مرور أدمن مشغّل ──────────────────────────────────────────
@@ -156,17 +167,22 @@ def reset_operator_password(op_id):
     current_app.validate_csrf()
     new_pass = request.form.get('new_password', '')
     conn = get_db_connection()
-    op = conn.execute('SELECT name FROM operators WHERE id=?', (op_id,)).fetchone()
-    if not op:
-        session['op_message'] = ('error', 'المشغّل غير موجود.')
-    elif len(new_pass) < 8:
-        session['op_message'] = ('error', 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.')
-    else:
-        conn.execute('UPDATE operator_admins SET password_hash=? WHERE operator_id=?', (generate_password_hash(new_pass), op_id))
-        conn.commit()
-        write_dev_audit("OPERATOR_PASSWORD_RESET", f"id={op_id} name={op['name']}")
-        session['op_message'] = ('success', f'تم تحديث كلمة مرور أدمن "{op["name"]}".')
-    conn.close()
+    try:
+        op = conn.execute('SELECT name FROM operators WHERE id=?', (op_id,)).fetchone()
+        if not op:
+            session['op_message'] = ('error', 'المشغّل غير موجود.')
+        elif len(new_pass) < 8:
+            session['op_message'] = ('error', 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.')
+        else:
+            conn.execute('UPDATE operator_admins SET password_hash=? WHERE operator_id=?', (generate_password_hash(new_pass), op_id))
+            conn.commit()
+            write_dev_audit("OPERATOR_PASSWORD_RESET", f"id={op_id} name={op['name']}")
+            session['op_message'] = ('success', f'تم تحديث كلمة مرور أدمن "{op["name"]}".')
+    except Exception as ex:
+        conn.rollback()
+        session['op_message'] = ('error', f'فشل التحديث: {ex}')
+    finally:
+        conn.close()
     return redirect(url_for('dev.dev_dashboard'))
 
 # ── حذف مشغّل نهائياً (وكل بياناته) ────────────────────────────────────────────
@@ -177,16 +193,17 @@ def delete_operator(op_id):
     current_app.validate_csrf()
     confirm_slug = request.form.get('confirm_slug', '').strip().lower()
     conn = get_db_connection()
-    op = conn.execute('SELECT slug, name FROM operators WHERE id=?', (op_id,)).fetchone()
-    if not op or confirm_slug != op['slug']:
-        session['op_message'] = ('error', 'يجب كتابة رابط (slug) المشغّل بالضبط لتأكيد الحذف.')
-        conn.close()
-        return redirect(url_for('dev.dev_dashboard'))
     try:
-        conn.execute('DELETE FROM transactions WHERE operator_id=?', (op_id,))
-        conn.execute('DELETE FROM vouchers WHERE operator_id=?', (op_id,))
-        conn.execute('DELETE FROM revenue_log WHERE operator_id=?', (op_id,))
-        conn.execute('DELETE FROM operator_admins WHERE operator_id=?', (op_id,))
+        op = conn.execute('SELECT slug, name FROM operators WHERE id=?', (op_id,)).fetchone()
+        if not op or confirm_slug != op['slug']:
+            session['op_message'] = ('error', 'يجب كتابة رابط (slug) المشغّل بالضبط لتأكيد الحذف.')
+            return redirect(url_for('dev.dev_dashboard'))
+
+        for tbl in ('pending_orders', 'sms_log', 'transactions', 'vouchers', 'revenue_log', 'operator_admins'):
+            try:
+                conn.execute(f'DELETE FROM {tbl} WHERE operator_id=?', (op_id,))
+            except Exception:
+                pass
         conn.execute('UPDATE audit_log SET operator_id=NULL WHERE operator_id=?', (op_id,))
         conn.execute('DELETE FROM operators WHERE id=?', (op_id,))
         conn.commit()
@@ -213,7 +230,6 @@ def reset_revenue():
             confirm_text = request.form.get('confirm_all', '').strip()
             if confirm_text != 'مسح الكل':
                 session['op_message'] = ('error', 'يجب كتابة "مسح الكل" بالضبط لتأكيد مسح إيرادات كل الشبكات.')
-                conn.close()
                 return redirect(url_for('dev.dev_dashboard'))
             count = conn.execute('SELECT COUNT(*) FROM operators WHERE lifetime_revenue != 0').fetchone()[0]
             conn.execute('UPDATE operators SET lifetime_revenue = 0')
