@@ -1,9 +1,9 @@
 from flask import Blueprint, request, session, g, abort
-import sqlite3, os
+import os
 from werkzeug.security import check_password_hash
+from db_layer import IS_POSTGRES, get_db_connection as _base_get_db_connection
 
 admin_bp = Blueprint('admin', __name__, template_folder='templates')
-DATABASE = 'hotspot_cards.db'
 
 # كلمة المرور الافتراضية اللي تُعطى لأول أدمن لكل مشغّل جديد (انظر app.py
 # init_db_auto) — نستخدمها هون فقط للتنبيه لو المشغّل ما غيّرها بعد، وليست
@@ -22,18 +22,22 @@ PAGE_SIZE          = 200   # عدد البطاقات في كل صفحة
 
 # ── DB ──────────────────────────────────────────────────────────────────────
 def get_db_connection():
-    conn = sqlite3.connect(DATABASE, timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn = _base_get_db_connection()
+    if not IS_POSTGRES:
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
     return conn
 
 
 # ── تحديد المشغّل الحالي حسب الـ slug في الرابط ──────────────────────────────
 def _get_operator_by_slug(slug):
     conn = get_db_connection()
-    op = conn.execute('SELECT * FROM operators WHERE slug = ?', (slug,)).fetchone()
-    conn.close()
-    return op
+    try:
+        return conn.execute('SELECT * FROM operators WHERE slug = ?', (slug,)).fetchone()
+    finally:
+        conn.close()
 
 
 @admin_bp.before_request
@@ -50,9 +54,14 @@ def _resolve_operator():
 
 def get_admin_credentials(operator_id):
     conn = get_db_connection()
-    row  = conn.execute('SELECT username, password_hash FROM operator_admins WHERE operator_id=?', (operator_id,)).fetchone()
-    conn.close()
-    return (row['username'], row['password_hash']) if row else (None, None)
+    try:
+        row = conn.execute(
+            'SELECT username, password_hash FROM operator_admins WHERE operator_id=?',
+            (operator_id,),
+        ).fetchone()
+        return (row['username'], row['password_hash']) if row else (None, None)
+    finally:
+        conn.close()
 
 
 def verify_admin_password(operator_id, plain):
@@ -75,16 +84,26 @@ def is_using_default_password(operator_id):
 # ── Audit ────────────────────────────────────────────────────────────────────
 def write_audit(action, details="", actor="admin", operator_id=None):
     ip = request.remote_addr or "unknown"
+    conn = None
     try:
         conn = get_db_connection()
         conn.execute(
             "INSERT INTO audit_log (actor, action, details, ip_address, operator_id) VALUES (?,?,?,?,?)",
-            (actor, action, details, ip, operator_id)
+            (actor, action, details, ip, operator_id),
         )
         conn.commit()
-        conn.close()
     except Exception:
-        pass
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def _require_admin_login(slug):
