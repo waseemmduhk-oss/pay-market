@@ -1,7 +1,8 @@
 from flask import request, session, redirect, url_for, make_response, current_app, render_template, jsonify, g
-import re, csv, io, os, math, pypdf
+import re, csv, io, os, math, time, pypdf
 from werkzeug.security import generate_password_hash
 from report_utils import _xlsx_safe
+from db_layer import IS_POSTGRES
 from .common import (
     admin_bp, get_db_connection, write_audit, _require_admin_login, verify_admin_password,
     is_using_default_password, ALLOWED_EXTENSIONS, MAX_FILE_SIZE, PAGE_SIZE,
@@ -79,18 +80,50 @@ def extract_vouchers_from_text(full_text, price, profile, duration_hours, conn, 
         except Exception:
             pass
 
-    inserted = duplicates = 0
-    for u, p in pairs:
+    if not pairs:
+        return 0, 0
+
+    # إزالة التكرار داخل نفس الملف أولاً لتقليل الاستعلامات السحابية
+    unique_pairs = list(dict.fromkeys(pairs))
+    intra_file_dups = len(pairs) - len(unique_pairs)
+
+    sql = (
+        'INSERT INTO vouchers (username,password,price,profile,status,operator_id,duration_hours) VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING'
+        if IS_POSTGRES else
+        'INSERT OR IGNORE INTO vouchers (username,password,price,profile,status,operator_id,duration_hours) VALUES (?,?,?,?,?,?,?)'
+    )
+
+    inserted = db_dups = 0
+    batch_size = 250
+    for start_idx in range(0, len(unique_pairs), batch_size):
+        chunk = unique_pairs[start_idx:start_idx + batch_size]
+        values = [(u, p, price, profile, 'available', operator_id, duration_hours) for u, p in chunk]
         try:
-            c = conn.execute(
-                'INSERT OR IGNORE INTO vouchers (username,password,price,profile,status,operator_id,duration_hours) VALUES (?,?,?,?,?,?,?)',
-                (u, p, price, profile, 'available', operator_id, duration_hours)
-            )
-            if c.rowcount: inserted += 1
-            else:          duplicates += 1
+            conn.executemany(sql, values)
+            # في psycopg قد يكون rowcount للدفعة أو غير محدد حسب الإصدار؛ نعتمد القيمة إن كانت موجبة، وإلا نُدرج فردياً بأمان
+            if hasattr(conn, '_cursor') and conn._cursor is not None and conn._cursor.rowcount is not None and conn._cursor.rowcount >= 0:
+                chunk_ins = conn._cursor.rowcount
+                inserted += chunk_ins
+                db_dups += max(0, len(chunk) - chunk_ins)
+            else:
+                for val in values:
+                    cur_res = conn.execute(sql, val)
+                    if getattr(cur_res, 'rowcount', 0):
+                        inserted += 1
+                    else:
+                        db_dups += 1
         except Exception:
-            duplicates += 1
-    return inserted, duplicates
+            for val in values:
+                try:
+                    cur_res = conn.execute(sql, val)
+                    if getattr(cur_res, 'rowcount', 0):
+                        inserted += 1
+                    else:
+                        db_dups += 1
+                except Exception:
+                    db_dups += 1
+
+    return inserted, intra_file_dups + db_dups
 
 
 # ── API: فلترة البطاقات من السيرفر (بدلاً من تحميل كل شيء) ──────────────────
@@ -116,18 +149,6 @@ def vouchers_json(slug):
     where_sql = 'WHERE ' + ' AND '.join(where)
     conn  = get_db_connection()
     total = conn.execute(f'SELECT COUNT(*) FROM vouchers {where_sql}', params).fetchone()[0]
-    # ملاحظة: عمود id في vouchers تلقائي الترقيم على مستوى القاعدة كلها (مشترك
-    # بين كل المشغّلين)، فكان يظهر للمشغّل أرقاماً غير متسلسلة (فيها "قفزات")
-    # لأن بطاقات مشغّلين آخرين تحتل أرقاماً بينها. "seq" هنا رقم تسلسلي خاص
-    # بهذا المشغّل فقط (1، 2، 3...) حسب ترتيب إضافة بطاقاته هو، بغض النظر عن
-    # بطاقات بقية المشغّلين أو أي فلترة/بحث مطبّق على القائمة.
-    #
-    # ملاحظة أداء: سابقاً كان seq يُحسب بـ subquery مرتبط (COUNT لكل صف
-    # مُرجَع) — تكلفته تقارب O(عدد الصفوف بالصفحة × عدد بطاقات المشغّل)،
-    # وتصير بطيئة تدريجياً مع نمو المخزون. استبدلناه بـ ROW_NUMBER() تُحسب
-    # مرة واحدة فقط عبر ترتيب/مسح واحد لكل بطاقات المشغّل (بدون الفلترة
-    # الحالية، حتى يبقى الترقيم ثابتاً بغض النظر عن البحث/الفلتر)، وبعدين
-    # نطبّق الفلترة والصفحات فوق النتيجة.
     rows = conn.execute(
         f'''SELECT id, username, password, price, profile, duration_hours, status, seq
             FROM (
@@ -135,7 +156,7 @@ def vouchers_json(slug):
                        ROW_NUMBER() OVER (PARTITION BY operator_id ORDER BY id) AS seq
                 FROM vouchers
                 WHERE operator_id = ?
-            )
+            ) AS sub_vouchers
             {where_sql} ORDER BY id DESC LIMIT ? OFFSET ?''',
         [operator_id] + params + [PAGE_SIZE, offset]
     ).fetchall()
@@ -172,11 +193,6 @@ def admin_dashboard(slug):
             return redirect(url_for('admin.admin_dashboard', slug=slug))
 
         # ── شعار (لوجو) الشبكة — رفع اختياري، أو إزالة الشعار الحالي ──────
-        # ملاحظة أمان: SVG مستبعد عمداً من الصيغ المسموحة — ملفات SVG ممكن
-        # تحتوي <script> أو أحداث onload/onclick وتتنفّذ لو انفتح الملف مباشرة
-        # برابطه (خارج <img>)، وهذا يعطي XSS مخزّن بنفس أصل الموقع. لو احتجت
-        # دعم SVG مستقبلاً لازم تعقيمه فعلياً قبل الحفظ (إزالة script/on*/
-        # javascript: URIs) وليس فقط الاعتماد على الامتداد.
         LOGO_ALLOWED_EXT = {'.png', '.jpg', '.jpeg', '.webp'}
         LOGO_MAX_SIZE    = 2 * 1024 * 1024  # 2MB كافية جداً للوجو
         logo_filename = operator['logo_filename'] or ''
@@ -204,10 +220,8 @@ def admin_dashboard(slug):
                     conn.close()
                     return redirect(url_for('admin.admin_dashboard', slug=slug))
                 os.makedirs(logo_dir, exist_ok=True)
-                # اسم ثابت حسب رقم المشغّل حتى يستبدل شعاره القديم تلقائياً بدل ما يتراكم ملفات يتيمة
                 new_filename = f"logo_{operator_id}{ext}"
                 logo_file.save(os.path.join(logo_dir, new_filename))
-                # لو الامتداد الجديد مختلف عن القديم (مثلاً استبدل png بـ jpg)، نحذف الملف القديم
                 if logo_filename and logo_filename != new_filename:
                     old_path = os.path.join(logo_dir, logo_filename)
                     if os.path.exists(old_path):
@@ -260,7 +274,7 @@ def admin_dashboard(slug):
             conn.close(); return redirect(url_for('admin.admin_dashboard', slug=slug))
         file.seek(0, 2); size = file.tell(); file.seek(0)
         if size > MAX_FILE_SIZE:
-            session['upload_error'] = f'حجم الملف يتجاوز 5MB.'
+            session['upload_error'] = 'حجم الملف يتجاوز 5MB.'
             conn.close(); return redirect(url_for('admin.admin_dashboard', slug=slug))
         try:
             price = round(float(request.form['file_price']), 2)
@@ -323,8 +337,8 @@ def admin_dashboard(slug):
 
     # بيانات الإحصاء فقط (لا نُحمّل كل البطاقات — تُحمَّل عبر API)
     total_count     = conn.execute('SELECT COUNT(*) FROM vouchers WHERE operator_id=?', (operator_id,)).fetchone()[0]
-    available_count = conn.execute('SELECT COUNT(*) FROM vouchers WHERE status="available" AND operator_id=?', (operator_id,)).fetchone()[0]
-    sold_count      = conn.execute('SELECT COUNT(*) FROM vouchers WHERE status="sold" AND operator_id=?', (operator_id,)).fetchone()[0]
+    available_count = conn.execute("SELECT COUNT(*) FROM vouchers WHERE status='available' AND operator_id=?", (operator_id,)).fetchone()[0]
+    sold_count      = conn.execute("SELECT COUNT(*) FROM vouchers WHERE status='sold' AND operator_id=?", (operator_id,)).fetchone()[0]
     revenue         = conn.execute('SELECT COALESCE(SUM(amount_paid),0) FROM transactions WHERE operator_id=?', (operator_id,)).fetchone()[0]
 
     # بحث عميل
@@ -332,7 +346,7 @@ def admin_dashboard(slug):
     customer_search_date  = request.args.get('search_date', '').strip()
     customer_groups = []
     if customer_search_phone:
-        sql    = '''
+        sql = '''
             SELECT t.transaction_id, t.wallet_code, t.created_at, t.amount_paid,
                    v.username, v.password, v.price, v.profile
             FROM transactions t JOIN vouchers v ON t.voucher_id = v.id
@@ -340,7 +354,10 @@ def admin_dashboard(slug):
         '''
         params = [customer_search_phone, operator_id]
         if customer_search_date:
-            sql += ' AND date(t.created_at) = ?'
+            if IS_POSTGRES:
+                sql += ' AND (t.created_at)::date = (?)::date'
+            else:
+                sql += ' AND date(t.created_at) = ?'
             params.append(customer_search_date)
         sql += ' ORDER BY t.id DESC'
         txn_rows = conn.execute(sql, params).fetchall()
@@ -360,7 +377,7 @@ def admin_dashboard(slug):
     # ── تنبيه انخفاض المخزون: نحسب المتاح لكل باقة (سعر/بروفايل) على حدة ──
     LOW_STOCK_THRESHOLD = 10
     stock_by_price = conn.execute('''
-        SELECT price, profile, duration_hours, COUNT(CASE WHEN status="available" THEN 1 END) AS avail
+        SELECT price, profile, duration_hours, COUNT(CASE WHEN status='available' THEN 1 END) AS avail
         FROM vouchers WHERE operator_id=?
         GROUP BY price, profile, duration_hours ORDER BY price ASC
     ''', (operator_id,)).fetchall()
@@ -388,7 +405,6 @@ def admin_dashboard(slug):
         duration_options.append(d)
     conn.close()
 
-    import time
     login_time        = session.get('login_time', time.time())
     session_remaining = max(0, int(1800 - (time.time() - login_time)))
 
@@ -423,8 +439,6 @@ def admin_dashboard(slug):
         audit_logs            = audit_logs,
         using_default_password = is_using_default_password(operator_id),
     ))
-    # لمنع أي متصفح/بروكسي من عرض نسخة قديمة من اللوحة (مخزون قديم مثلاً)
-    # بعد أي عملية حذف أو تعديل تعيد التوجيه لنفس هذه الصفحة
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -447,9 +461,9 @@ def delete_vouchers(slug):
             conn.commit()
             session['settings_message'] = ('success', f'تم حذف كل البطاقات بنجاح ({count} بطاقة).')
         elif delete_type == 'sold':
-            count = conn.execute('SELECT COUNT(*) FROM vouchers WHERE status="sold" AND operator_id=?', (operator_id,)).fetchone()[0]
-            conn.execute('DELETE FROM transactions WHERE operator_id=? AND voucher_id IN (SELECT id FROM vouchers WHERE status="sold" AND operator_id=?)', (operator_id, operator_id))
-            conn.execute('DELETE FROM vouchers WHERE status="sold" AND operator_id=?', (operator_id,))
+            count = conn.execute("SELECT COUNT(*) FROM vouchers WHERE status='sold' AND operator_id=?", (operator_id,)).fetchone()[0]
+            conn.execute("DELETE FROM transactions WHERE operator_id=? AND voucher_id IN (SELECT id FROM vouchers WHERE status='sold' AND operator_id=?)", (operator_id, operator_id))
+            conn.execute("DELETE FROM vouchers WHERE status='sold' AND operator_id=?", (operator_id,))
             write_audit("DELETE_SOLD", f"{count} بطاقة مباعة", operator_id=operator_id)
             conn.commit()
             session['settings_message'] = ('success', f'تم حذف البطاقات المباعة بنجاح ({count} بطاقة).')
@@ -457,7 +471,6 @@ def delete_vouchers(slug):
             safe = [str(int(i)) for i in selected_ids if str(i).isdigit()]
             if safe:
                 ph = ','.join('?'*len(safe))
-                # نتأكد إن كل البطاقات المحددة تتبع فعلاً لهذا المشغّل قبل الحذف
                 owned = conn.execute(f'SELECT id FROM vouchers WHERE id IN ({ph}) AND operator_id=?', safe + [operator_id]).fetchall()
                 owned_ids = [str(r['id']) for r in owned]
                 if owned_ids:
@@ -482,12 +495,8 @@ def delete_vouchers(slug):
                 session['settings_message'] = ('error', 'بيانات الفئة غير صالحة.')
                 conn.close()
                 return redirect(url_for('admin.admin_dashboard', slug=slug))
-            # نحذف فقط البطاقات غير المباعة (available) من هذه الفئة، حتى لا تنكسر
-            # سجلات المبيعات/الفواتير المرتبطة بأي بطاقة من نفس الفئة سبق بيعها.
-            # نعتمد على rowcount نفسه من عملية الحذف كمصدر وحيد للعدد الحقيقي
-            # المحذوف، بدل عدّ منفصل قبلها، تفادياً لأي تعارض توقيت بين الاثنين.
             cur = conn.execute(
-                'DELETE FROM vouchers WHERE operator_id=? AND price=? AND profile=? AND duration_hours=? AND status="available"',
+                "DELETE FROM vouchers WHERE operator_id=? AND price=? AND profile=? AND duration_hours=? AND status='available'",
                 (operator_id, cat_price, cat_profile, cat_hours)
             )
             count = cur.rowcount
@@ -499,22 +508,14 @@ def delete_vouchers(slug):
     except Exception as ex:
         conn.rollback()
         session['settings_message'] = ('error', f'فشلت عملية الحذف: {ex}')
-    finally: conn.close()
+    finally:
+        conn.close()
     return redirect(url_for('admin.admin_dashboard', slug=slug))
 
 
 @admin_bp.route('/<slug>/admin/update-category-price', methods=['POST'])
 def update_category_price(slug):
-    """تغيير سعر فئة كروت (سعر + بروفايل + مدة) دفعة واحدة.
-
-    يغيّر سعر البطاقات "المتاحة" (غير المباعة) فقط:
-      - البطاقات المباعة وسجلاتها وإيراداتها السابقة ما بتتأثر أبداً.
-      - البطاقات المحجوزة لطلب قيد الدفع بتضل بسعرها القديم (الزبون شاف ودفع
-        بالسعر القديم، ومبلغ الطلب نفسه ثابت)، وبعد انتهاء الطلب لو رجعت متاحة
-        ممكن يظهر عدد قليل منها بالفئة القديمة — يعدّل المشغّل سعرها بنفس الطريقة.
-      - لو في فئة موجودة أصلاً بنفس (السعر الجديد + البروفايل + المدة) بتندمج
-        معها تلقائياً لأن الفئة هي الثلاثية نفسها.
-    البروفايل والمدة (اللي بتحدد اسم الكرت) ما بيتغيروا."""
+    """تغيير سعر فئة كروت (سعر + بروفايل + مدة) دفعة واحدة."""
     if not _require_admin_login(slug): return "غير مسموح", 403
     current_app.validate_csrf()
     operator_id = g.operator['id']
@@ -548,8 +549,6 @@ def update_category_price(slug):
             "AND ABS(price-?) < 0.005 AND profile=? AND COALESCE(duration_hours,0)=?",
             (operator_id, old_price, cat_profile, cat_hours)
         ).fetchone()[0]
-        # نثبّت التعديل أولاً ثم نكتب سجل النشاط: write_audit بتفتح اتصالها الخاص،
-        # ولو كتبت والتعديل لسا غير مثبّت بتلاقي القاعدة مقفولة وبتفشل بصمت
         conn.commit()
         if count:
             write_audit("UPDATE_CATEGORY_PRICE",
@@ -578,7 +577,6 @@ def delete_card_single(slug):
     card_id = request.form.get('card_id')
     if card_id and str(card_id).isdigit():
         conn = get_db_connection()
-        # نتأكد إن البطاقة تتبع لهذا المشغّل قبل أي حذف (عزل بيانات صارم)
         row = conn.execute('SELECT username,profile FROM vouchers WHERE id=? AND operator_id=?', (card_id, operator_id)).fetchone()
         if row:
             conn.execute('DELETE FROM transactions WHERE voucher_id=?', (card_id,))
@@ -610,8 +608,6 @@ def export_archive(slug):
     cw = csv.writer(si)
     cw.writerow(['ID', 'Username', 'Password', 'Price', 'Profile', 'Status'])
     for v in vouchers:
-        # حماية من CSV Formula Injection (نفس فكرة _xlsx_safe) — ملفات CSV
-        # كمان ممكن تُفسَّر كصيغ لو فُتحت بـ Excel/Sheets وبدأت الخلية بـ =+-@
         cw.writerow([v['id'], _xlsx_safe(v['username']), _xlsx_safe(v['password']), v['price'], _xlsx_safe(v['profile']), v['status']])
     label = {'sold': 'sold', 'available': 'available'}.get(status_filter, 'all')
     write_audit("EXPORT_ARCHIVE", f"status={label} عدد={len(vouchers)}", operator_id=operator_id)
@@ -690,7 +686,7 @@ def export_category(slug):
     conn = get_db_connection()
     rows = conn.execute('''
         SELECT username, password FROM vouchers
-        WHERE operator_id=? AND price=? AND profile=? AND duration_hours=? AND status="available"
+        WHERE operator_id=? AND price=? AND profile=? AND duration_hours=? AND status='available'
         ORDER BY id ASC
     ''', (operator_id, cat_price, cat_profile, cat_hours)).fetchall()
     conn.close()
