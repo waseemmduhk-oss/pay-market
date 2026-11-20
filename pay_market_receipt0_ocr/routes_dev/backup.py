@@ -38,6 +38,25 @@ def _ensure_backups_table(conn):
     conn.commit()
 
 
+def _sync_pg_sequence(conn, table_name):
+    """يحدّث عدّاد الترقيم التلقائي في PostgreSQL بعد استعادة صفوف تحمل id محدد."""
+    if not IS_POSTGRES:
+        return
+    try:
+        conn.execute(
+            """
+            SELECT setval(
+                pg_get_serial_sequence(?, 'id'),
+                COALESCE((SELECT MAX(id) FROM """ + table_name + """), 1),
+                true
+            )
+            """,
+            (table_name,),
+        )
+    except Exception:
+        pass
+
+
 def _serialize_rows(rows):
     result = []
     for r in rows:
@@ -226,6 +245,7 @@ def restore_backup():
                 col_sql = ','.join(cols)
                 vals = [item[c] for c in cols]
                 conn.execute(f'INSERT INTO {tbl} ({col_sql}) VALUES ({placeholders})', vals)
+            _sync_pg_sequence(conn, tbl)
 
         conn.commit()
         write_dev_audit("RESTORE_BACKUP", f"استُرجع من: {filename}")
