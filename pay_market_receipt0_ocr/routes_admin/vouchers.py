@@ -83,48 +83,32 @@ def extract_vouchers_from_text(full_text, price, profile, duration_hours, conn, 
     if not pairs:
         return 0, 0
 
-    # إزالة التكرار داخل نفس الملف أولاً لتقليل الاستعلامات السحابية
+    # إزالة التكرار داخل نفس الملف أولاً لتقليل العمليات
     unique_pairs = list(dict.fromkeys(pairs))
     intra_file_dups = len(pairs) - len(unique_pairs)
 
-    sql = (
-        'INSERT INTO vouchers (username,password,price,profile,status,operator_id,duration_hours) VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING'
-        if IS_POSTGRES else
-        'INSERT OR IGNORE INTO vouchers (username,password,price,profile,status,operator_id,duration_hours) VALUES (?,?,?,?,?,?,?)'
-    )
+    # جلب الموجود مسبقاً للمشغّل بـ SELECT واحد فقط
+    existing_rows = conn.execute(
+        'SELECT username FROM vouchers WHERE operator_id = ?',
+        (operator_id,),
+    ).fetchall()
+    existing_usernames = {r['username'] for r in existing_rows}
 
-    inserted = db_dups = 0
-    batch_size = 250
-    for start_idx in range(0, len(unique_pairs), batch_size):
-        chunk = unique_pairs[start_idx:start_idx + batch_size]
-        values = [(u, p, price, profile, 'available', operator_id, duration_hours) for u, p in chunk]
+    new_pairs = [(u, p) for (u, p) in unique_pairs if u not in existing_usernames]
+    db_dups = len(unique_pairs) - len(new_pairs)
+
+    inserted = 0
+    for u, p in new_pairs:
         try:
-            conn.executemany(sql, values)
-            # في psycopg قد يكون rowcount للدفعة أو غير محدد حسب الإصدار؛ نعتمد القيمة إن كانت موجبة، وإلا نُدرج فردياً بأمان
-            if hasattr(conn, '_cursor') and conn._cursor is not None and conn._cursor.rowcount is not None and conn._cursor.rowcount >= 0:
-                chunk_ins = conn._cursor.rowcount
-                inserted += chunk_ins
-                db_dups += max(0, len(chunk) - chunk_ins)
-            else:
-                for val in values:
-                    cur_res = conn.execute(sql, val)
-                    if getattr(cur_res, 'rowcount', 0):
-                        inserted += 1
-                    else:
-                        db_dups += 1
+            conn.execute(
+                'INSERT INTO vouchers (username,password,price,profile,status,operator_id,duration_hours) VALUES (?,?,?,?,?,?,?)',
+                (u, p, price, profile, 'available', operator_id, duration_hours),
+            )
+            inserted += 1
         except Exception:
-            for val in values:
-                try:
-                    cur_res = conn.execute(sql, val)
-                    if getattr(cur_res, 'rowcount', 0):
-                        inserted += 1
-                    else:
-                        db_dups += 1
-                except Exception:
-                    db_dups += 1
+            db_dups += 1
 
     return inserted, intra_file_dups + db_dups
-
 
 # ── API: فلترة البطاقات من السيرفر (بدلاً من تحميل كل شيء) ──────────────────
 @admin_bp.route('/<slug>/admin/vouchers-json')
