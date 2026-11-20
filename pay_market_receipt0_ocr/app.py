@@ -36,13 +36,19 @@ if _PROXY_LAYERS > 0:
 _SECRET_KEY_FILE = os.path.join(BASE_DIR, 'secret.key')
 def _load_or_create_secret_key():
     if os.environ.get("SECRET_KEY"):
-        return os.environ["SECRET_KEY"]
-    if os.path.exists(_SECRET_KEY_FILE):
-        with open(_SECRET_KEY_FILE, 'r') as f:
-            return f.read().strip()
+        return os.environ["SECRET_KEY"].strip()
+    if not IS_POSTGRES and os.path.exists(_SECRET_KEY_FILE):
+        with open(_SECRET_KEY_FILE, 'r', encoding='utf-8') as f:
+            val = f.read().strip()
+            if val:
+                return val
     key = secrets.token_hex(32)
-    with open(_SECRET_KEY_FILE, 'w') as f:
-        f.write(key)
+    if not IS_POSTGRES:
+        try:
+            with open(_SECRET_KEY_FILE, 'w', encoding='utf-8') as f:
+                f.write(key)
+        except OSError:
+            pass
     return key
 
 app.secret_key = _load_or_create_secret_key()
@@ -370,7 +376,7 @@ def file_too_large(e):
     if not back_url.startswith(request.host_url):
         back_url = url_for('home')
     sep = '&' if '?' in back_url else '?'
-    safe_url = json.dumps(back_url + sep + 'error=file_too_large')
+    safe_url = json.dumps(back_url + sep + 'error=file_too_large').replace('</', '<\\/')
     return f'''
     <script>
     window.location.href = {safe_url};
