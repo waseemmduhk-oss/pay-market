@@ -23,7 +23,10 @@ def dev_dashboard():
     "SELECT COUNT(*) FROM vouchers WHERE operator_id=? AND status='available'",
     (op['id'],),
 ).fetchone()[0]
-        sold    = conn.execute('SELECT COUNT(*) FROM vouchers WHERE operator_id=? AND status="sold"', (op['id'],)).fetchone()[0]
+        sold = conn.execute(
+    "SELECT COUNT(*) FROM vouchers WHERE operator_id=? AND status='sold'",
+    (op['id'],),
+).fetchone()[0]
         # نعرض الإيراد التراكمي المحفوظ على operators.lifetime_revenue،
         revenue = op['lifetime_revenue']
         admin_row = conn.execute('SELECT username FROM operator_admins WHERE operator_id=?', (op['id'],)).fetchone()
