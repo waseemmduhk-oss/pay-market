@@ -14,44 +14,48 @@ def admin_login(slug):
     operator_id = operator['id']
     # مفتاح فريد لكل (IP + مشغّل) لمنع محاولات فاشلة عند مشغّل من التأثير على آخر
     rl_key = f"admin_login:{request.remote_addr or 'unknown'}:{operator_id}"
-    rl_conn = get_db_connection()
-    state   = rate_limit.check_and_hit(rl_conn, rl_key, MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION)
-    rl_conn.close()
-    locked        = state['locked']
-    remaining     = state['remaining']
-    attempts_left = state['attempts_left']
-    shake_class   = ""
+    conn = get_db_connection()
+    try:
+        state = rate_limit.check_and_hit(conn, rl_key, MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION)
+        locked        = state['locked']
+        remaining     = state['remaining']
+        attempts_left = state['attempts_left']
+        shake_class   = ""
 
-    if request.method == 'POST' and not locked:
-        current_app.validate_csrf()
-        username = request.form.get('username', '')
-        password = request.form.get('password', '')
-        ADMIN_USERNAME, _ = get_admin_credentials(operator_id)
+        if request.method == 'POST' and not locked:
+            current_app.validate_csrf()
+            username = request.form.get('username', '')
+            password = request.form.get('password', '')
+            ADMIN_USERNAME, _ = get_admin_credentials(operator_id)
 
-        if ADMIN_USERNAME and username == ADMIN_USERNAME and verify_admin_password(operator_id, password):
-            rl_conn = get_db_connection()
-            rate_limit.reset(rl_conn, rl_key)
-            rl_conn.close()
-            session.clear()
-            session['admin_logged_in'] = True
-            session['operator_id']     = operator_id
-            session['operator_slug']   = slug
-            session['login_time']      = time.time()
-            session.permanent          = True
-            write_audit("LOGIN_SUCCESS", "تسجيل دخول ناجح", actor=username, operator_id=operator_id)
-            return redirect(url_for('admin.admin_dashboard', slug=slug))
-        else:
-            rl_conn = get_db_connection()
-            state   = rate_limit.register_failure(rl_conn, rl_key, MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION)
-            rl_conn.close()
-            if state['locked']:
-                write_audit("LOGIN_LOCKOUT", f"تجميد بعد {MAX_LOGIN_ATTEMPTS} محاولات", actor=username or "?", operator_id=operator_id)
+            if ADMIN_USERNAME and username == ADMIN_USERNAME and verify_admin_password(operator_id, password):
+                rate_limit.reset(conn, rl_key)
+                conn.close()
+                conn = None
+                session.clear()
+                session['admin_logged_in'] = True
+                session['operator_id']     = operator_id
+                session['operator_slug']   = slug
+                session['login_time']      = time.time()
+                session.permanent          = True
+                write_audit("LOGIN_SUCCESS", "تسجيل دخول ناجح", actor=username, operator_id=operator_id)
+                return redirect(url_for('admin.admin_dashboard', slug=slug))
             else:
-                write_audit("LOGIN_FAIL", f"محاولة {state['count']}/{MAX_LOGIN_ATTEMPTS}", actor=username or "?", operator_id=operator_id)
-            locked        = state['locked']
-            remaining     = state['remaining']
-            attempts_left = state['attempts_left']
-            shake_class   = "shake"
+                state = rate_limit.register_failure(conn, rl_key, MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION)
+                if state['locked']:
+                    write_audit("LOGIN_LOCKOUT", f"تجميد بعد {MAX_LOGIN_ATTEMPTS} محاولات", actor=username or "?", operator_id=operator_id)
+                else:
+                    write_audit("LOGIN_FAIL", f"محاولة {state['count']}/{MAX_LOGIN_ATTEMPTS}", actor=username or "?", operator_id=operator_id)
+                locked        = state['locked']
+                remaining     = state['remaining']
+                attempts_left = state['attempts_left']
+                shake_class   = "shake"
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     return render_template('admin_login.html',
         locked=locked, remaining=remaining,
