@@ -1,4 +1,5 @@
 from flask import request, session, redirect, url_for, current_app, render_template
+from db_layer import IS_POSTGRES
 from .common import dev_bp, get_db_connection, write_dev_audit, _require_dev_login
 
 # ── سجل تسجيلات الدخول الفاشلة المجمّع ──────────────────────────────────────
@@ -18,10 +19,11 @@ def dev_security_log():
     ''', failed_actions).fetchall()
 
     # تجميع حسب IP لآخر 7 أيام — لرصد أي محاولات اختراق متكررة
+    time_filter = "NOW() - INTERVAL '7 days'" if IS_POSTGRES else "datetime('now', '-7 days')"
     by_ip = conn.execute(f'''
         SELECT ip_address, COUNT(*) AS attempts, MAX(event_time) AS last_attempt
         FROM audit_log
-        WHERE action IN ({placeholders}) AND event_time >= datetime('now', '-7 days')
+        WHERE action IN ({placeholders}) AND event_time >= {time_filter}
         GROUP BY ip_address ORDER BY attempts DESC LIMIT 20
     ''', failed_actions).fetchall()
     conn.close()
