@@ -262,11 +262,11 @@ def admin_payments(slug):
             "SELECT COUNT(*) FROM pending_orders WHERE operator_id=? AND status='pending'", (operator_id,)
         ).fetchone()[0],
         'confirmed_today': conn.execute(
-            "SELECT COUNT(*) FROM pending_orders WHERE operator_id=? AND status='confirmed' AND date(confirmed_at)=date('now')",
+            "SELECT COUNT(*) FROM pending_orders WHERE operator_id=? AND status='confirmed' AND SUBSTR(CAST(confirmed_at AS TEXT), 1, 10) = CURRENT_DATE",
             (operator_id,)
         ).fetchone()[0],
         'revenue_today': conn.execute(
-            "SELECT COALESCE(SUM(exact_amount),0) FROM pending_orders WHERE operator_id=? AND status='confirmed' AND date(confirmed_at)=date('now')",
+            "SELECT COALESCE(SUM(exact_amount),0) FROM pending_orders WHERE operator_id=? AND status='confirmed' AND SUBSTR(CAST(confirmed_at AS TEXT), 1, 10) = CURRENT_DATE",
             (operator_id,)
         ).fetchone()[0],
         'needs_review': conn.execute(
@@ -278,7 +278,7 @@ def admin_payments(slug):
     if search_date:
         row = conn.execute(
             "SELECT COUNT(*) AS c, COALESCE(SUM(exact_amount),0) AS r FROM pending_orders "
-            "WHERE operator_id=? AND status='confirmed' AND date(confirmed_at)=?",
+            "WHERE operator_id=? AND status='confirmed' AND SUBSTR(CAST(confirmed_at AS TEXT), 1, 10) = ?",
             (operator_id, search_date)
         ).fetchone()
         revenue_search = {'count': row['c'], 'revenue': row['r']}
@@ -312,7 +312,6 @@ def confirm_pending_order(slug, order_id):
     with _pay_lock:
         conn = get_db_connection()
         try:
-            conn.execute("BEGIN EXCLUSIVE")
             order = conn.execute(
                 "SELECT * FROM pending_orders WHERE id=? AND operator_id=? AND status IN ('pending','review')",
                 (order_id, operator_id)
@@ -323,9 +322,9 @@ def confirm_pending_order(slug, order_id):
                 session['payments_message'] = ('success', f'تم تأكيد الطلب #{order_id} يدوياً وتسليم البطاقات.')
             else:
                 session['payments_message'] = ('error', 'الطلب غير موجود أو تم التعامل معه مسبقاً.')
-            conn.execute("COMMIT")
+            conn.commit()
         except Exception:
-            conn.execute("ROLLBACK")
+            conn.rollback()
             session['payments_message'] = ('error', 'حدث خطأ أثناء التأكيد.')
         finally:
             conn.close()
@@ -340,7 +339,6 @@ def cancel_pending_order(slug, order_id):
     with _pay_lock:
         conn = get_db_connection()
         try:
-            conn.execute("BEGIN EXCLUSIVE")
             order = conn.execute(
                 "SELECT * FROM pending_orders WHERE id=? AND operator_id=? AND status IN ('pending','review')",
                 (order_id, operator_id)
@@ -351,9 +349,9 @@ def cancel_pending_order(slug, order_id):
                 session['payments_message'] = ('success', f'تم إلغاء الطلب #{order_id} وفكّ حجز بطاقاته.')
             else:
                 session['payments_message'] = ('error', 'الطلب غير موجود أو تم التعامل معه مسبقاً.')
-            conn.execute("COMMIT")
+            conn.commit()
         except Exception:
-            conn.execute("ROLLBACK")
+            conn.rollback()
             session['payments_message'] = ('error', 'حدث خطأ أثناء الإلغاء.')
         finally:
             conn.close()
@@ -525,7 +523,7 @@ def _customers_page_html(operator, slug, rows, q, csrf_token, notice=None):
 
 
 def _query_customers(operator_id, q):
-    from routes_user import _ensure_customers_table   # استيراد متأخر لتفادي الاستيراد الدائري
+    from routes_user import _ensure_customers_table
     conn = get_db_connection()
     _ensure_customers_table(conn)
     digits = re.sub(r'\D', '', q or '')
@@ -592,15 +590,15 @@ def admin_login_as_customer(slug, customer_id):
     if not _require_admin_login(slug): return "غير مسموح", 403
     current_app.validate_csrf()
     operator_id = g.operator['id']
-    
+
     conn = get_db_connection()
     cust = conn.execute("SELECT id, phone FROM customers WHERE id=? AND operator_id=?", (customer_id, operator_id)).fetchone()
     conn.close()
-    
+
     if not cust:
         session['admin_message'] = ('error', 'الزبون غير موجود.')
         return redirect(url_for('admin.admin_customers', slug=slug))
-    
+
     session['customer_logged_in'] = True
     session['customer_phone'] = cust['phone']
     session['customer_operator_id'] = operator_id
