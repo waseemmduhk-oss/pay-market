@@ -161,6 +161,17 @@ def dev_system_health():
                 if last_backup_time:
                     days_since_backup = (datetime.now() - last_backup_time).days
         except Exception:
+            if IS_POSTGRES:
+                conn.rollback()
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            backup_files = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.db')]
+            backups_size_mb = round(sum(os.path.getsize(os.path.join(BACKUP_DIR, f)) for f in backup_files) / (1024 * 1024), 2)
+            backups_count = len(backup_files)
+            if backup_files:
+                newest = max(backup_files, key=lambda f: os.path.getmtime(os.path.join(BACKUP_DIR, f)))
+                last_backup_time = datetime.fromtimestamp(os.path.getmtime(os.path.join(BACKUP_DIR, newest)))
+                days_since_backup = (datetime.now() - last_backup_time).days
+        except Exception:
             os.makedirs(BACKUP_DIR, exist_ok=True)
             backup_files = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.db')]
             backups_size_mb = round(sum(os.path.getsize(os.path.join(BACKUP_DIR, f)) for f in backup_files) / (1024 * 1024), 2)
