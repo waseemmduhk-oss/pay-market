@@ -1,8 +1,9 @@
 from flask import Blueprint, request, redirect, url_for, session, current_app, g, abort
-import re, time, secrets, os, html as html_lib
+import re, time, secrets, os, html as html_lib, sqlite3, datetime as _dt
 from urllib.parse import quote as _urlquote
 from werkzeug.security import generate_password_hash, check_password_hash
 import rate_limit
+import db_layer
 from db_layer import (
     IS_POSTGRES,
     get_db_connection,
@@ -104,6 +105,10 @@ def _prepare_user_db():
     _ensure_customers_table(conn)
     _ensure_hidden_column(conn)
     return conn
+
+
+def _toast_page(icon, icon_color, icon_bg, title, message, btn_label, btn_href, btn_color):
+    return f'''<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -163,15 +168,22 @@ CUSTOMER_RESET_LOCKOUT    = 1800   # ثم قفل نصف ساعة (يمنع تخ�
 
 
 def _fmt_dt(ts):
-    """'2026-09-07 21:53:33' (UTC من SQLite) → '7 سبتمبر 2026 · 12:53 ص' بتوقيت غزة."""
+    """يحوّل طابع الزمن إلى توقيت غزة بشكل آمن مع SQLite و PostgreSQL."""
+    if not ts:
+        return ''
     try:
-        import datetime as _dt
-        d = _dt.datetime.strptime(str(ts)[:19], '%Y-%m-%d %H:%M:%S').replace(tzinfo=_dt.timezone.utc)
+        if isinstance(ts, _dt.datetime):
+            d = ts if ts.tzinfo else ts.replace(tzinfo=_dt.timezone.utc)
+        else:
+            s = str(ts).strip()
+            d = _dt.datetime.fromisoformat(s.replace('Z', '+00:00'))
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=_dt.timezone.utc)
         d = d.astimezone(_GAZA_TZ) if _GAZA_TZ else d + _dt.timedelta(hours=3)
         h = d.hour % 12 or 12
         return f"{d.day} {_AR_MONTHS[d.month - 1]} {d.year} · {h}:{d.minute:02d} {'م' if d.hour >= 12 else 'ص'}"
     except Exception:
-        return str(ts or '')
+        return str(ts)
 
 
 def _hours_label(h):
@@ -276,7 +288,7 @@ def _shop_doc(title, body_html):
         {body_html}
     </div>
     <footer class="text-center py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 border-t border-slate-200/40 dark:border-[#3A506B]/20 w-full bg-white dark:bg-[#1C2541]">
-        جميع الحقوق محفوظة © شبكة market hotspot 2026
+        جميع الحقوق محفوظة &copy; شبكة market hotspot 2026
     </footer>
 </body>
 </html>'''
@@ -418,7 +430,7 @@ def register(slug):
             session['auth_phone']   = phone
             return redirect(url_for('user.register', slug=slug))
 
-        conn = get_db_connection()
+        conn = _prepare_user_db()
         # حدّ لعدد الحسابات المُنشأة من نفس الـIP (يمنع حجز أرقام هواتف بالجملة)
         if rate_limit.hit_sliding_window(conn, f"customer_register:{request.remote_addr or 'unknown'}:{operator_id}",
                                           CUSTOMER_REGISTER_LIMIT, CUSTOMER_REGISTER_WINDOW):
@@ -441,9 +453,14 @@ def register(slug):
             conn.execute("INSERT INTO customers (operator_id, phone, password_hash) VALUES (?,?,?)",
                          (operator_id, phone, generate_password_hash(password)))
             conn.commit()
-        except sqlite3.IntegrityError:
+        except Exception as exc:
+            conn.rollback()
+            pg_integrity = getattr(getattr(db_layer, "psycopg", None), "IntegrityError", ())
+            if isinstance(exc, (sqlite3.IntegrityError,) + ((pg_integrity,) if pg_integrity else ())):
+                conn.close()
+                return _fail('هذا الرقم مسجَّل مسبقاً — سجّل دخولك بدل إنشاء حساب جديد.')
             conn.close()
-            return _fail('هذا الرقم مسجَّل مسبقاً — سجّل دخولك بدل إنشاء حساب جديد.')
+            raise
         conn.close()
         _start_customer_session(phone, remember=True)
         return redirect(url_for('user.index', slug=slug))
@@ -490,7 +507,7 @@ def login(slug):
             return redirect(url_for('user.login', slug=slug))
 
         rl_key = f"customer_login:{request.remote_addr or 'unknown'}:{operator_id}"
-        conn = get_db_connection()
+        conn = _prepare_user_db()
         locked, remaining = rate_limit.check_locked(conn, rl_key)
         if locked:
             conn.close()
@@ -569,7 +586,7 @@ def forgot_password(slug):
 
         ip_key    = f"customer_reset_ip:{request.remote_addr or 'unknown'}:{operator_id}"
         phone_key = f"customer_reset_phone:{operator_id}:{phone}"
-        conn = get_db_connection()
+        conn = _prepare_user_db()
         for k in (ip_key, phone_key):
             locked, remaining = rate_limit.check_locked(conn, k)
             if locked:
@@ -656,7 +673,7 @@ def account(slug):
         return redirect(url_for('user.login', slug=slug))
     phone = session['customer_phone']
 
-    conn = get_db_connection()
+    conn = _prepare_user_db()
     all_rows = conn.execute('''
         SELECT t.id AS tid, t.id AS transaction_id, t.created_at, v.username, v.password, v.price, v.profile,
                v.duration_hours, COALESCE(t.hidden_by_customer, 0) AS hidden
@@ -799,7 +816,7 @@ def delete_card(slug, tid):
     if not (session.get('customer_logged_in') and session.get('customer_phone')):
         return redirect(url_for('user.login', slug=slug))
     current_app.validate_csrf()
-    conn = get_db_connection()
+    conn = _prepare_user_db()
     # الشرط الثلاثي (المعرّف + رقم حسابه + المشغّل) يمنع إخفاء بطاقة زبون آخر
     cur = conn.execute(
         "UPDATE transactions SET hidden_by_customer = 1 "
@@ -831,7 +848,7 @@ def index(slug):
     if not customer_logged_in:
         return _landing_page(operator, slug)
 
-    conn = get_db_connection()
+    conn = _prepare_user_db()
     customer_phone = session.get('customer_phone', '') if customer_logged_in else ''
 
     # تنظيف القيم قبل إدراجها داخل الـ HTML (حماية من XSS)
@@ -869,19 +886,10 @@ def index(slug):
 
     # جلب الباقات المتاحة قبل إغلاق الاتصال (خاصة بهذا المشغّل فقط)
     available_prices = conn.execute(
-        'SELECT DISTINCT price, profile, duration_hours FROM vouchers WHERE status = "available" AND operator_id = ? ORDER BY price ASC',
+        "SELECT DISTINCT price, profile, duration_hours FROM vouchers WHERE status = 'available' AND operator_id = ? ORDER BY price ASC",
         (operator_id,)
     ).fetchall()
     conn.close()
-
-    def _hours_label(h):
-        h = int(h or 0)
-        if h <= 0:  return ''
-        if h == 720: return 'بطاقة شهرية'   # البطاقة الشهرية = 30 يوم
-        if h == 1:  return 'ساعة واحدة'
-        if h == 2:  return 'ساعتان'
-        if 3 <= h <= 10: return f'{h} ساعات'
-        return f'{h} ساعة'
 
     if available_prices:
         def _price_row(idx, row):
@@ -1277,7 +1285,7 @@ def index(slug):
         </div>
 
         <footer class="text-center py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 border-t border-slate-200/40 dark:border-[#3A506B]/20 w-full bg-white dark:bg-[#1C2541]">
-            جميع الحقوق محفوظة © شبكة market hotspot 2026
+            جميع الحقوق محفوظة &copy; شبكة market hotspot 2026
         </footer>
     </body>
     </html>
