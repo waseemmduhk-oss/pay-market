@@ -1,11 +1,16 @@
 from flask import Blueprint, request, redirect, url_for, session, current_app, g, abort
-import sqlite3, re, time, secrets, os, html as html_lib
+import re, time, secrets, os, html as html_lib
 from urllib.parse import quote as _urlquote
 from werkzeug.security import generate_password_hash, check_password_hash
 import rate_limit
+from db_layer import (
+    IS_POSTGRES,
+    get_db_connection,
+    get_table_columns,
+    add_column_if_missing,
+)
 
 user_bp = Blueprint('user', __name__)
-DATABASE = 'hotspot_cards.db'
 
 # ── حساب الزبون (رقم هاتف + كلمة مرور) ───────────────────────────────────────
 # التفاصيل الكاملة للتدفق بأول كتلة "حساب الزبون" أدناه (ترحيب/تسجيل/دخول/كروتي).
@@ -15,11 +20,12 @@ CUSTOMER_MIN_PASSWORD_LEN   = 6     # للحسابات الجديدة فقط (ا
 
 # ── تحديد المشغّل الحالي حسب الـ slug في الرابط ──────────────────────────────
 def _get_operator_by_slug(slug):
-    conn = sqlite3.connect(DATABASE, timeout=10)
-    conn.row_factory = sqlite3.Row
-    op = conn.execute('SELECT * FROM operators WHERE slug = ?', (slug,)).fetchone()
-    conn.close()
-    return op
+    conn = get_db_connection()
+    try:
+        op = conn.execute('SELECT * FROM operators WHERE slug = ?', (slug,)).fetchone()
+        return op
+    finally:
+        conn.close()
 
 @user_bp.before_request
 def _resolve_operator():
@@ -35,20 +41,14 @@ def _resolve_operator():
 _customers_ready = False
 
 def _ensure_customers_table(conn):
-    """يضمن وجود جدول حسابات الزبائن ببنية سليمة، مرة واحدة لكل عملية تشغيل.
-
-    السبب: إنشاء الجداول والترقيات بـ app.py (init_db_auto) ما بيشتغل إلا لما
-    يُشغَّل الملف مباشرة (python app.py)، وما بيشتغل لما تحمّله استضافة WSGI مثل
-    PythonAnywhere — فكان جدول customers ممكن ما ينعمل أبداً، وأي إنشاء حساب أو
-    تسجيل دخول بينتهي بصفحة خطأ (OperationalError: no such table: customers).
-    لو لقينا جدول قديم ببنية مختلفة (بدون الأعمدة الأساسية) نحتفظ فيه باسم جديد
-    كأرشيف بدل حذفه وننشئ جدولاً سليماً."""
+    """يضمن وجود جدول حسابات الزبائن ببنية سليمة، مرة واحدة لكل عملية تشغيل."""
     global _customers_ready
     if _customers_ready:
         return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(customers)").fetchall()}
+    cols = get_table_columns(conn, "customers")
     if cols and not {'operator_id', 'phone', 'password_hash'}.issubset(cols):
         conn.execute(f"ALTER TABLE customers RENAME TO customers_legacy_{int(time.time())}")
+        conn.commit()
         cols = set()
     if not cols:
         conn.execute('''
@@ -85,31 +85,25 @@ def _speed_label(profile):
 _hidden_col_ready = False
 
 def _ensure_hidden_column(conn):
-    """يضيف عمود transactions.hidden_by_customer مرة واحدة لكل عملية تشغيل.
-    "حذف البطاقة" بصفحة «كروتي» إخفاء من قائمة الزبون فقط — سجل العملية والبطاقة
-    نفسها لازم يضلوا بقاعدة البيانات لأنهم أساس تقارير مبيعات وإيرادات المشغّل.
-    (نفس سبب _ensure_customers_table: init_db_auto ما بتشتغل على استضافة WSGI)."""
+    """يضيف عمود transactions.hidden_by_customer مرة واحدة لكل عملية تشغيل."""
     global _hidden_col_ready
     if _hidden_col_ready:
         return
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}
-    if cols and 'hidden_by_customer' not in cols:
-        conn.execute("ALTER TABLE transactions ADD COLUMN hidden_by_customer INTEGER DEFAULT 0")
-        conn.commit()
+    add_column_if_missing(conn, "transactions", "hidden_by_customer", "INTEGER DEFAULT 0")
+    conn.commit()
     _hidden_col_ready = True
 
 
-def get_db_connection():
-    conn = sqlite3.connect(DATABASE, timeout=10, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    #تفعيل WAL mode لدعم العمليات المتزامنة
-    conn.execute("PRAGMA journal_mode=WAL")
+def _prepare_user_db():
+    conn = get_db_connection()
+    if not IS_POSTGRES:
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
     _ensure_customers_table(conn)
     _ensure_hidden_column(conn)
     return conn
-
-def _toast_page(icon, icon_color, icon_bg, title, message, btn_label, btn_href, btn_color):
-    return f'''<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
