@@ -1,5 +1,5 @@
 import os
-from flask import session, current_app, Blueprint
+from flask import session, request, Blueprint
 from werkzeug.security import generate_password_hash
 from db_layer import (
     BASE_DIR,
@@ -18,18 +18,17 @@ if not IS_POSTGRES:
 def init_db_if_not_exists():
     """ضمان إنشاء جميع الجداول وترقية الأعمدة تلقائياً على PostgreSQL/Supabase أو SQLite"""
     conn = get_db_connection()
-    cursor = conn.cursor()
     try:
-        cursor.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS rate_limits ("
             "key TEXT PRIMARY KEY, count INTEGER, window_start REAL, locked_until REAL)"
         )
-        cursor.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS dev_admins ("
             "id INTEGER PRIMARY KEY CHECK (id = 1), username TEXT NOT NULL, "
             "password_hash TEXT NOT NULL, warning_dismissed INTEGER DEFAULT 0)"
         )
-        cursor.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS operators ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, username TEXT, "
             "slug TEXT UNIQUE NOT NULL, balance REAL, lifetime_revenue REAL DEFAULT 0, "
@@ -39,14 +38,14 @@ def init_db_if_not_exists():
             "telegram_chat_id TEXT, telegram_webhook_secret TEXT, "
             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
         )
-        cursor.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS operator_admins ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER NOT NULL UNIQUE, "
             "username TEXT NOT NULL, password_hash TEXT NOT NULL, "
             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
             "FOREIGN KEY(operator_id) REFERENCES operators(id))"
         )
-        cursor.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS vouchers ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, "
             "username TEXT NOT NULL, password TEXT NOT NULL, code TEXT, price REAL NOT NULL, "
@@ -54,7 +53,7 @@ def init_db_if_not_exists():
             "duration_hours INTEGER NOT NULL DEFAULT 0, seq INTEGER, "
             "FOREIGN KEY(operator_id) REFERENCES operators(id))"
         )
-        cursor.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS pending_orders ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, order_token TEXT UNIQUE NOT NULL, "
             "operator_id INTEGER NOT NULL, customer_phone TEXT NOT NULL, "
@@ -65,27 +64,27 @@ def init_db_if_not_exists():
             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, expires_at REAL NOT NULL, "
             "confirmed_at TIMESTAMP, FOREIGN KEY(operator_id) REFERENCES operators(id))"
         )
-        cursor.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS transactions ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, amount REAL, "
             "amount_paid REAL, status TEXT, wallet_code TEXT, "
             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
             "FOREIGN KEY(operator_id) REFERENCES operators(id))"
         )
-        cursor.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS revenue_log ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER NOT NULL, "
             "amount REAL NOT NULL, occurred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
             "FOREIGN KEY(operator_id) REFERENCES operators(id))"
         )
-        cursor.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS audit_log ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, actor TEXT, "
             "action TEXT NOT NULL, details TEXT, ip_address TEXT, "
             "event_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
         )
-        cursor.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS sms_log ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER NOT NULL, "
             "raw_message TEXT, parsed_amount REAL, parsed_phone TEXT, "
@@ -103,9 +102,9 @@ def init_db_if_not_exists():
             add_column_if_missing(conn, "transactions", col_name, col_def)
 
         # إنشاء حساب المطور الافتراضي لو لم يكن موجوداً
-        dev_existing = cursor.execute("SELECT id FROM dev_admins WHERE id=1").fetchone()
+        dev_existing = conn.execute("SELECT id FROM dev_admins WHERE id=1").fetchone()
         if not dev_existing:
-            cursor.execute(
+            conn.execute(
                 "INSERT INTO dev_admins (id, username, password_hash) VALUES (1, ?, ?)",
                 ("dev", generate_password_hash("ChangeMe#2026")),
             )
@@ -113,7 +112,10 @@ def init_db_if_not_exists():
         conn.commit()
     except Exception as e:
         print("Auto-Init DB Error:", e)
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
     finally:
         conn.close()
 
@@ -135,14 +137,29 @@ def _require_dev_login():
 
 
 def write_dev_audit(action, details=""):
+    ip = 'unknown'
+    try:
+        ip = request.remote_addr or 'unknown'
+    except Exception:
+        pass
+    conn = None
     try:
         conn = get_db_connection()
-        ip = current_app.config.get('REMOTE_ADDR') or 'unknown'
         conn.execute(
             'INSERT INTO audit_log (action, details, ip_address) VALUES (?, ?, ?)',
             (action, details, ip),
         )
         conn.commit()
-        conn.close()
     except Exception as e:
         print("Audit Log Error:", e)
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
