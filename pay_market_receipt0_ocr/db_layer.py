@@ -70,6 +70,13 @@ def _adapt_sql_to_pg(sql: str) -> str:
     )
     q = re.sub(r"\bdate\(([^)]+)\)", r"(\1)::date", q, flags=re.IGNORECASE)
 
+    q = re.sub(
+        r'(=\s*|!=\s*|<>\s*|\bLIKE\s+)"([a-z0-9_ -]+)"',
+        r"\1'\2'",
+        q,
+        flags=re.IGNORECASE,
+    )
+    
     return q
 
 
