@@ -4,6 +4,7 @@ from datetime import datetime
 from werkzeug.security import check_password_hash
 import report_utils
 from routes_payment import CLEANUP_TOKEN
+from db_layer import IS_POSTGRES
 from .common import (
     dev_bp, get_db_connection, write_dev_audit, _require_dev_login,
     DATABASE, BACKUP_DIR, LOW_STOCK_THRESHOLD,
@@ -18,31 +19,33 @@ def dev_dashboard():
     operators = conn.execute('SELECT * FROM operators ORDER BY id ASC').fetchall()
     stats = {}
     for op in operators:
-        total   = conn.execute('SELECT COUNT(*) FROM vouchers WHERE operator_id=?', (op['id'],)).fetchone()[0]
+        total = conn.execute('SELECT COUNT(*) FROM vouchers WHERE operator_id=?', (op['id'],)).fetchone()[0]
         avail = conn.execute(
-    "SELECT COUNT(*) FROM vouchers WHERE operator_id=? AND status='available'",
-    (op['id'],),
-).fetchone()[0]
+            "SELECT COUNT(*) FROM vouchers WHERE operator_id=? AND status='available'",
+            (op['id'],),
+        ).fetchone()[0]
         sold = conn.execute(
-    "SELECT COUNT(*) FROM vouchers WHERE operator_id=? AND status='sold'",
-    (op['id'],),
-).fetchone()[0]
-        # نعرض الإيراد التراكمي المحفوظ على operators.lifetime_revenue،
+            "SELECT COUNT(*) FROM vouchers WHERE operator_id=? AND status='sold'",
+            (op['id'],),
+        ).fetchone()[0]
+        # نعرض الإيراد التراكمي المحفوظ على operators.lifetime_revenue
         revenue = op['lifetime_revenue']
         admin_row = conn.execute('SELECT username FROM operator_admins WHERE operator_id=?', (op['id'],)).fetchone()
         low_stock_count = conn.execute('''
             SELECT COUNT(*) FROM (
                 SELECT price, COUNT(*) AS c FROM vouchers
-                WHERE operator_id=? AND status="available" GROUP BY price, profile HAVING c < ?
-            )
+                WHERE operator_id=? AND status='available'
+                GROUP BY price, profile
+                HAVING COUNT(*) < ?
+            ) AS low_stock_sub
         ''', (op['id'], LOW_STOCK_THRESHOLD)).fetchone()[0]
         stats[op['id']] = {
             'total': total, 'available': avail, 'sold': sold,
             'revenue': revenue, 'admin_username': admin_row['username'] if admin_row else None,
             'low_stock_count': low_stock_count
         }
-    global_total    = conn.execute('SELECT COUNT(*) FROM vouchers').fetchone()[0]
-    global_revenue  = conn.execute('SELECT COALESCE(SUM(lifetime_revenue),0) FROM operators').fetchone()[0]
+    global_total   = conn.execute('SELECT COUNT(*) FROM vouchers').fetchone()[0]
+    global_revenue = conn.execute('SELECT COALESCE(SUM(lifetime_revenue),0) FROM operators').fetchone()[0]
 
     # ── تحسين الرسم البياني: يمكن تصفيته حسب مشغّل معيّن ومدى الأيام ──
     chart_operator_raw = request.args.get('chart_operator', '').strip()
@@ -122,7 +125,14 @@ def dev_system_health():
         return redirect(url_for('dev.dev_login'))
     conn = get_db_connection()
 
-    db_size_mb = round(os.path.getsize(DATABASE) / (1024 * 1024), 2) if os.path.exists(DATABASE) else 0
+    if IS_POSTGRES:
+        size_bytes = conn.execute('SELECT pg_database_size(current_database())').fetchone()[0] or 0
+        db_size_mb = round(size_bytes / (1024 * 1024), 2)
+        db_engine_version = conn.execute('SHOW server_version').fetchone()[0]
+    else:
+        db_size_mb = round(os.path.getsize(DATABASE) / (1024 * 1024), 2) if os.path.exists(DATABASE) else 0
+        db_engine_version = sqlite3.sqlite_version
+
     disk = shutil.disk_usage('.')
     disk_free_gb  = round(disk.free  / (1024 ** 3), 2)
     disk_total_gb = round(disk.total / (1024 ** 3), 2)
@@ -138,20 +148,27 @@ def dev_system_health():
     days_since_backup = (datetime.now() - last_backup_time).days if last_backup_time else None
 
     operators_active   = conn.execute('SELECT COUNT(*) FROM operators WHERE is_active=1').fetchone()[0]
-    operators_inactive  = conn.execute('SELECT COUNT(*) FROM operators WHERE is_active=0').fetchone()[0]
-    total_vouchers      = conn.execute('SELECT COUNT(*) FROM vouchers').fetchone()[0]
-    total_transactions  = conn.execute('SELECT COUNT(*) FROM transactions').fetchone()[0]
-    total_audit_rows    = conn.execute('SELECT COUNT(*) FROM audit_log').fetchone()[0]
+    operators_inactive = conn.execute('SELECT COUNT(*) FROM operators WHERE is_active=0').fetchone()[0]
+    total_vouchers     = conn.execute('SELECT COUNT(*) FROM vouchers').fetchone()[0]
+    total_transactions = conn.execute('SELECT COUNT(*) FROM transactions').fetchone()[0]
+    total_audit_rows   = conn.execute('SELECT COUNT(*) FROM audit_log').fetchone()[0]
 
     dev_row = conn.execute('SELECT password_hash FROM dev_admins WHERE id=1').fetchone()
     using_default_password = bool(dev_row and check_password_hash(dev_row['password_hash'], 'ChangeMe#2026'))
 
     # عدد محاولات الدخول الفاشلة بآخر 24 ساعة (كل اللوحات مجمّعة)
-    failed_logins_24h = conn.execute('''
-        SELECT COUNT(*) FROM audit_log
-        WHERE action IN ('LOGIN_FAIL','LOGIN_LOCKOUT','DEV_LOGIN_FAIL','DEV_LOGIN_LOCKOUT')
-        AND event_time >= datetime('now', '-1 day')
-    ''').fetchone()[0]
+    if IS_POSTGRES:
+        failed_logins_24h = conn.execute('''
+            SELECT COUNT(*) FROM audit_log
+            WHERE action IN ('LOGIN_FAIL','LOGIN_LOCKOUT','DEV_LOGIN_FAIL','DEV_LOGIN_LOCKOUT')
+            AND event_time >= NOW() - INTERVAL '1 day'
+        ''').fetchone()[0]
+    else:
+        failed_logins_24h = conn.execute('''
+            SELECT COUNT(*) FROM audit_log
+            WHERE action IN ('LOGIN_FAIL','LOGIN_LOCKOUT','DEV_LOGIN_FAIL','DEV_LOGIN_LOCKOUT')
+            AND event_time >= datetime('now', '-1 day')
+        ''').fetchone()[0]
     conn.close()
 
     return render_template('dev_system_health.html',
@@ -163,4 +180,4 @@ def dev_system_health():
         using_default_password=using_default_password,
         failed_logins_24h=failed_logins_24h,
         python_version=sys.version.split()[0], flask_version=flask.__version__,
-        sqlite_version=sqlite3.sqlite_version, platform_info=platform.platform())
+        sqlite_version=db_engine_version, platform_info=platform.platform())
