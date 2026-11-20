@@ -64,19 +64,20 @@ def _adapt_sql_to_pg(sql: str) -> str:
     q = "".join(out)
 
     q = re.sub(
-        r"date\('now',\s*'%s'\)",
+        r"date\('now',\s*%s\)",
         "(CURRENT_DATE + (%s)::interval)",
         q,
+        flags=re.IGNORECASE,
     )
     q = re.sub(r"\bdate\(([^)]+)\)", r"(\1)::date", q, flags=re.IGNORECASE)
 
     q = re.sub(
-        r'(=\s*|!=\s*|<>\s*|\bLIKE\s+)"([a-z0-9_ -]+)"',
+        r'(=|!=|<>|\bLIKE\s+)"([a-z0-9_ -]+)"',
         r"\1'\2'",
         q,
         flags=re.IGNORECASE,
     )
-    
+
     return q
 
 
@@ -90,10 +91,18 @@ class PgCursorWrapper:
                 first_val = next(iter(row.values())) if isinstance(row, dict) else row[0]
                 self.lastrowid = first_val
 
+    @property
+    def rowcount(self):
+        return self._cur.rowcount
+
     def execute(self, sql: str, params=None):
         adapted = _adapt_sql_to_pg(sql)
         stripped_upper = adapted.lstrip().upper()
-        is_insert = stripped_upper.startswith("INSERT INTO") and "RETURNING" not in stripped_upper
+        is_insert = (
+            stripped_upper.startswith("INSERT INTO")
+            and "RETURNING" not in stripped_upper
+            and "ON CONFLICT" not in stripped_upper
+        )
         self.lastrowid = None
         if is_insert:
             adapted_with_ret = f"{adapted.rstrip().rstrip(';')} RETURNING id"
@@ -105,7 +114,6 @@ class PgCursorWrapper:
                         self.lastrowid = next(iter(row.values())) if isinstance(row, dict) else row[0]
                 return self
             except Exception:
-                self._cur.connection.rollback()
                 self._cur.execute(adapted, params or ())
                 return self
 
@@ -134,7 +142,11 @@ class PgConnWrapper:
     def execute(self, sql: str, params=None):
         adapted = _adapt_sql_to_pg(sql)
         stripped_upper = adapted.lstrip().upper()
-        is_insert = stripped_upper.startswith("INSERT INTO") and "RETURNING" not in stripped_upper
+        is_insert = (
+            stripped_upper.startswith("INSERT INTO")
+            and "RETURNING" not in stripped_upper
+            and "ON CONFLICT" not in stripped_upper
+        )
         if is_insert:
             adapted_with_ret = f"{adapted.rstrip().rstrip(';')} RETURNING id"
             try:
@@ -142,7 +154,6 @@ class PgConnWrapper:
                 cur.execute(adapted_with_ret, params or ())
                 return PgCursorWrapper(cur, is_insert=True)
             except Exception:
-                self._conn.rollback()
                 cur = self._conn.cursor(row_factory=dict_row)
                 cur.execute(adapted, params or ())
                 return PgCursorWrapper(cur, is_insert=False)
