@@ -36,7 +36,7 @@ def _hours_label(h):
     if 3 <= h <= 10: return f'{h} ساعات'
     return f'{h} ساعة'
 
-# ── استخراج بأنماط متعددة ────────────────────────────────────────────────────
+# ── استخراج بأنماط متعددة (إدراج على دفعات لتفادي WORKER TIMEOUT) ───────────
 def extract_vouchers_from_text(full_text, price, profile, duration_hours, conn, operator_id):
     lines = [l.strip() for l in full_text.split('\n')]
     pairs = []
@@ -98,15 +98,31 @@ def extract_vouchers_from_text(full_text, price, profile, duration_hours, conn, 
     db_dups = len(unique_pairs) - len(new_pairs)
 
     inserted = 0
-    for u, p in new_pairs:
+    batch_size = 200
+    for i in range(0, len(new_pairs), batch_size):
+        chunk = new_pairs[i:i + batch_size]
+        placeholders = ','.join(['(?,?,?,?,?,?,?)'] * len(chunk))
+        params = []
+        for u, p in chunk:
+            params.extend([u, p, price, profile, 'available', operator_id, duration_hours])
         try:
             conn.execute(
-                'INSERT INTO vouchers (username,password,price,profile,status,operator_id,duration_hours) VALUES (?,?,?,?,?,?,?)',
-                (u, p, price, profile, 'available', operator_id, duration_hours),
+                f'INSERT INTO vouchers (username,password,price,profile,status,operator_id,duration_hours) VALUES {placeholders}',
+                params,
             )
-            inserted += 1
+            inserted += len(chunk)
         except Exception:
-            db_dups += 1
+            conn.rollback()
+            for u, p in chunk:
+                try:
+                    conn.execute(
+                        'INSERT INTO vouchers (username,password,price,profile,status,operator_id,duration_hours) VALUES (?,?,?,?,?,?,?)',
+                        (u, p, price, profile, 'available', operator_id, duration_hours),
+                    )
+                    inserted += 1
+                except Exception:
+                    conn.rollback()
+                    db_dups += 1
 
     return inserted, intra_file_dups + db_dups
 
