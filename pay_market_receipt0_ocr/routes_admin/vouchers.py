@@ -1,8 +1,8 @@
 from flask import request, session, redirect, url_for, make_response, current_app, render_template, jsonify, g
-import re, csv, io, os, math, time, pypdf
+import re, csv, io, os, math, time, base64, pypdf
+from db_layer import IS_POSTGRES, get_table_columns, add_column_if_missing
 from werkzeug.security import generate_password_hash
 from report_utils import _xlsx_safe
-from db_layer import IS_POSTGRES
 from .common import (
     admin_bp, get_db_connection, write_audit, _require_admin_login, verify_admin_password,
     is_using_default_password, ALLOWED_EXTENSIONS, MAX_FILE_SIZE, PAGE_SIZE,
@@ -192,18 +192,46 @@ def admin_dashboard(slug):
             conn.close()
             return redirect(url_for('admin.admin_dashboard', slug=slug))
 
+        # تأكد من وجود أعمدة الشعار في جدول operators
+        try:
+            op_cols = get_table_columns(conn, 'operators')
+            if op_cols is not None:
+                if 'logo_data' not in op_cols:
+                    add_column_if_missing(conn, 'operators', 'logo_data', 'TEXT')
+                if 'logo_mime' not in op_cols:
+                    add_column_if_missing(conn, 'operators', 'logo_mime', 'TEXT')
+        except Exception:
+            pass
+
         # ── شعار (لوجو) الشبكة — رفع اختياري، أو إزالة الشعار الحالي ──────
         LOGO_ALLOWED_EXT = {'.png', '.jpg', '.jpeg', '.webp'}
-        LOGO_MAX_SIZE    = 2 * 1024 * 1024  # 2MB كافية جداً للوجو
+        LOGO_MIME_MAP = {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.webp': 'image/webp',
+        }
+        LOGO_MAX_SIZE = 2 * 1024 * 1024  # 2MB كافية جداً للوجو
         logo_filename = operator['logo_filename'] or ''
+        try:
+            logo_data = operator['logo_data']
+            logo_mime = operator['logo_mime']
+        except Exception:
+            logo_data = None
+            logo_mime = None
         logo_dir = os.path.join(current_app.root_path, 'static', 'logos')
 
         if request.form.get('remove_logo') == '1':
             if logo_filename:
-                old_path = os.path.join(logo_dir, logo_filename)
+                old_path = os.path.join(logo_dir, os.path.basename(logo_filename))
                 if os.path.exists(old_path):
-                    os.remove(old_path)
+                    try:
+                        os.remove(old_path)
+                    except OSError:
+                        pass
             logo_filename = ''
+            logo_data = None
+            logo_mime = None
         else:
             logo_file = request.files.get('logo_file')
             if logo_file and logo_file.filename:
@@ -212,29 +240,38 @@ def admin_dashboard(slug):
                     session['settings_message'] = ('error', 'صيغة الصورة غير مدعومة. مسموح: PNG, JPG, WEBP فقط.')
                     conn.close()
                     return redirect(url_for('admin.admin_dashboard', slug=slug))
-                logo_file.seek(0, os.SEEK_END)
-                size = logo_file.tell()
-                logo_file.seek(0)
-                if size > LOGO_MAX_SIZE:
+                raw_logo = logo_file.read()
+                if len(raw_logo) > LOGO_MAX_SIZE:
                     session['settings_message'] = ('error', 'حجم الصورة أكبر من 2 ميجابايت المسموح بها.')
                     conn.close()
                     return redirect(url_for('admin.admin_dashboard', slug=slug))
                 os.makedirs(logo_dir, exist_ok=True)
                 new_filename = f"logo_{operator_id}{ext}"
-                logo_file.save(os.path.join(logo_dir, new_filename))
+                try:
+                    with open(os.path.join(logo_dir, new_filename), 'wb') as f_out:
+                        f_out.write(raw_logo)
+                except OSError:
+                    pass
                 if logo_filename and logo_filename != new_filename:
-                    old_path = os.path.join(logo_dir, logo_filename)
+                    old_path = os.path.join(logo_dir, os.path.basename(logo_filename))
                     if os.path.exists(old_path):
-                        os.remove(old_path)
+                        try:
+                            os.remove(old_path)
+                        except OSError:
+                            pass
                 logo_filename = new_filename
+                logo_data = base64.b64encode(raw_logo).decode('ascii')
+                logo_mime = LOGO_MIME_MAP[ext]
 
         logo_size = request.form.get('logo_size', 'medium')
         if logo_size not in ('small', 'medium', 'large', 'xlarge'):
             logo_size = 'medium'
 
         conn.execute(
-            'UPDATE operators SET support_phone=?, jawwal_pay_number=?, hotspot_title=?, hotspot_login_url=?, logo_filename=?, logo_size=? WHERE id=?',
-            (support_phone, jawwal_number, hotspot_title, hotspot_login_url, logo_filename, logo_size, operator_id)
+            'UPDATE operators SET support_phone=?, jawwal_pay_number=?, hotspot_title=?, hotspot_login_url=?, '
+            'logo_filename=?, logo_size=?, logo_data=?, logo_mime=? WHERE id=?',
+            (support_phone, jawwal_number, hotspot_title, hotspot_login_url,
+             logo_filename, logo_size, logo_data, logo_mime, operator_id)
         )
         conn.commit()
         write_audit("PROFILE_UPDATE", "تحديث بيانات الشبكة العامة", operator_id=operator_id)
