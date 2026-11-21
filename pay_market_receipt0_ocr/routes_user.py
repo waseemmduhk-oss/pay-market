@@ -1,4 +1,5 @@
-from flask import Blueprint, request, redirect, url_for, session, current_app, g, abort
+from flask import Blueprint, request, redirect, url_for, session, current_app, g, abort, Response, send_from_directory
+import base64
 import re, time, secrets, os, html as html_lib, sqlite3, datetime as _dt
 from urllib.parse import quote as _urlquote
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -294,6 +295,64 @@ def _shop_doc(title, body_html):
 </html>'''
 
 
+
+def _logo_img_html(operator, wh, txt, extra_classes='mb-3 mx-auto'):
+    has_logo = False
+    try:
+        has_logo = bool(operator['logo_filename']) or bool(operator['logo_data'])
+    except Exception:
+        has_logo = bool(operator['logo_filename'])
+    if has_logo:
+        ver = html_lib.escape(str(operator['logo_filename'] or 'db'), quote=True)
+        slug_safe = html_lib.escape(str(operator['slug']), quote=True)
+        logo_url = f"/shop/{slug_safe}/logo?v={ver}"
+        return (
+            f'<img src="{logo_url}" alt="شعار الشبكة" '
+            f'class="{wh} rounded-2xl object-cover shadow-lg shadow-indigo-100 dark:shadow-none {extra_classes}">'
+        )
+    return (
+        f'<div class="cursor-pointer inline-flex items-center justify-center {wh} rounded-2xl '
+        f'bg-gradient-to-tr from-indigo-500 to-purple-600 text-white {txt} '
+        f'shadow-lg shadow-indigo-100 dark:shadow-none {extra_classes}">'
+        f'<i class="fa-solid fa-wifi"></i></div>'
+    )
+
+
+@user_bp.route('/shop/<slug>/logo')
+def operator_logo(slug):
+    conn = get_db_connection()
+    try:
+        op = conn.execute(
+            "SELECT * FROM operators WHERE slug = ?",
+            (slug,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not op:
+        abort(404)
+
+    try:
+        logo_data = op['logo_data']
+        logo_mime = op['logo_mime'] or 'image/png'
+        if logo_data:
+            raw_bytes = base64.b64decode(logo_data) if isinstance(logo_data, str) else bytes(logo_data)
+            resp = Response(raw_bytes, mimetype=logo_mime)
+            resp.headers['Cache-Control'] = 'no-cache, must-revalidate'
+            return resp
+    except Exception:
+        pass
+
+    if op['logo_filename']:
+        logo_dir = os.path.join(current_app.root_path, 'static', 'logos')
+        fn = os.path.basename(op['logo_filename'])
+        if os.path.exists(os.path.join(logo_dir, fn)):
+            resp = send_from_directory(logo_dir, fn)
+            resp.headers['Cache-Control'] = 'no-cache, must-revalidate'
+            return resp
+
+    abort(404)
+
 def _brand_header(operator, subtitle='', show_name=True):
     """شعار + اسم المتجر (نفس منطق الصفحة الرئيسية للمتجر).
     show_name=False يعرض الشعار فقط — لشاشة الترحيب اللي بتكتب الاسم بنفسها
@@ -302,13 +361,7 @@ def _brand_header(operator, subtitle='', show_name=True):
     sizes = {'small': ('w-12 h-12', 'text-lg'), 'medium': ('w-16 h-16', 'text-2xl'),
              'large': ('w-24 h-24', 'text-3xl'), 'xlarge': ('w-32 h-32', 'text-4xl')}
     wh, txt = sizes.get(operator['logo_size'] or 'medium', sizes['medium'])
-    if operator['logo_filename']:
-        fn = html_lib.escape(operator['logo_filename'], quote=True)
-        logo = f'<img src="/static/logos/{fn}" alt="شعار الشبكة" class="{wh} rounded-2xl object-cover shadow-lg shadow-indigo-100 dark:shadow-none mb-3 mx-auto">'
-    else:
-        logo = (f'<div class="inline-flex items-center justify-center {wh} rounded-2xl bg-gradient-to-tr from-indigo-500 '
-                f'to-purple-600 text-white {txt} shadow-lg shadow-indigo-100 dark:shadow-none mb-3">'
-                f'<i class="fa-solid fa-wifi"></i></div>')
+    logo = _logo_img_html(operator, wh, txt, extra_classes='mb-3 mx-auto')
     if not show_name:
         return f'<div class="text-center mb-4">{logo}</div>'
     sub = f'<p class="text-xs font-semibold text-slate-400 dark:text-slate-500 mt-1">{subtitle}</p>' if subtitle else ''
@@ -875,13 +928,7 @@ def index(slug):
     }
     logo_size_classes = LOGO_SIZE_CLASSES.get(operator['logo_size'] or 'medium', LOGO_SIZE_CLASSES['medium'])
     logo_size_wh, logo_size_text = logo_size_classes.rsplit(' ', 1)[0], logo_size_classes.rsplit(' ', 1)[1]
-    if operator['logo_filename']:
-        logo_filename_safe = html_lib.escape(operator['logo_filename'], quote=True)
-        logo_html = f'<img src="/static/logos/{logo_filename_safe}" alt="شعار الشبكة" class="{logo_size_wh} rounded-2xl object-cover shadow-lg shadow-indigo-100 dark:shadow-none mb-3 mx-auto">'
-    else:
-        logo_html = f'''<div class="cursor-pointer inline-flex items-center justify-center {logo_size_wh} rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white {logo_size_text} shadow-lg shadow-indigo-100 dark:shadow-none mb-3">
-                    <i class="fa-solid fa-wifi"></i>
-                </div>'''
+    logo_html = _logo_img_html(operator, logo_size_wh, logo_size_text, extra_classes='mb-3 mx-auto')
     buy_action     = url_for('payment.checkout', slug=slug)
 
     # جلب الباقات المتاحة قبل إغلاق الاتصال (خاصة بهذا المشغّل فقط)
